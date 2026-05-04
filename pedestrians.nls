@@ -1,0 +1,803 @@
+breed [pedestrians pedestrian]
+undirected-link-breed [ passengers passenger ]
+
+pedestrians-own [
+  location                      ; Current location of the pedestrian (origin node on current link)
+  destination                   ; Destination of the pedestrian (destination node on current link)
+  location-time                 ; Time step at which the pedestrian was at the loaction
+  destination-time              ; Time step at which the pedestrian reached the destination
+  top-speed                     ; Maximum speed of the pedestrian
+  speed                         ; Current speed of the pedestrian
+  progress                      ; Total distance of the current progress on a road (total distance from origin to reach the destination)
+  remaining-progress            ; Remaining distance of the current progress on a road (remaining distance from origin to reach the destination)
+  public-transport?             ; whether the agent is willing to use public transport or not
+  trip-legs                     ; the paths or bus services and stop points on each leg of the total trip
+  trip-legs-modes               ; the mode of transport used in each trip leg ("bus", "walk")
+  trip-legs-expected-periods    ; the expected time steps to be taken to finish each respective trip-leg
+  trip                          ; the path to achieve the current leg (can be a list of roads or a paired list of a node and a bus template)
+  i-leg                         ; the index of the current leg
+  on-bus?                       ; whether the pedestrian is on a bus or not
+  waiting?                      ; whether the pedestrian is waiting for a bus or not
+  current-bus                   ; the bus which the pedestrian is currenlty on
+  passenger-link                ; the passenger link between the pedestrian and the public transport agent (bus)
+  active?                       ; if pedestrian has not finished all its required trips
+  at-activity?                  ; whether the pedestrian is at a b-destination for an activity or not
+  my-home                       ; home of pedestrian
+  b-destinations                ; the list of all the building destinations (in order)
+  b-destination                 ; the destination building for the vehicle
+  i-destination                 ; the index of the destination building in the b-destinations
+  activity                      ; the list of the types of the activities signposted using integers (in order)
+  activity-weight               ; the list of the weights given to each activity
+  target-times                  ; the target time steps to reach each destination
+  times                         ; the time steps at which the pedestrian reached its destinations
+  delays                        ; the delay periods (comparing times to target-times)
+  expected-periods              ; the expected time steps to be taken to reach the destinations
+  buffer-period                 ; the number of time steps the pedestrian moves earlier than it should to achieve its target-times
+  periods                       ; the list of the periods taken to reach each b-destination
+  cancel-periods                ; the period thresholds at which an activity modification is requested
+  cancel-periods-%              ; the percentage of the expected period that yields a threshold at which an activity modification is requested
+  tolerance                     ; the tolerance of individuals for long trips
+  modify?                       ; whether the agent requests an activity modification or not
+  modify-type                   ; type of activity modification type - can be "cancel" or "reschedule"
+  initial-step?                 ; whether the pedestrian is at the initial trip from home or not
+]
+
+passengers-own [
+]
+
+;; Initialise the pedestrians
+to pedestrians-init [input-number-of-pedestrians]
+  
+  set activity-record (list)
+  set delay-record (list)
+  set threshold-record (list)
+  set weight-record (list)
+  set period-record (list)
+  set modify-record (list)
+  create-pedestrians input-number-of-pedestrians [
+    ;; initialise parameters
+    set color red                     ; Set pedestrian color
+    set shape "person"                ; Set pedestrian shape
+    set size 2
+    set initial-step? true
+    set at-activity? true
+    set tolerance truncated-normal 0 1 mean-tolerance 0.3
+    set buffer-period random (max-buffer-period * (tick-time-scale / 3600))
+    set my-home one-of buildings with [ b-type = "home" ]     ; Select a random starting point
+    set location my-home
+    move-to location
+    set top-speed ( (random-float (fastest-pedestrian - slowest-pedestrian)) + (1.0 * slowest-pedestrian) ) * (tick-time-scale / 3600) ; Set random maximum speed
+    set speed top-speed
+    set modify? (list)
+    set modify-type (list)
+    set periods (list)
+    set b-destinations (list)
+    set activity (list)
+    set activity-weight (list)
+    set target-times (list)
+    set expected-periods (list)
+    set cancel-periods (list)
+    set cancel-periods-% (list)
+    set times (list)
+    set delays (list)
+    set trip-legs (list)
+    set passenger-link nobody
+    set current-bus nobody
+    set on-bus? false
+    set waiting? false
+    set active? true
+    ifelse random (100 + 1) <= pedestrians-public-transport [set public-transport? true] [set public-transport? false]
+    
+    ;; create a full list of activities (to be randomly selected from with no repititions)
+    let activity-options (list)
+    let a-id 1
+    repeat max-n-activities [
+      set activity-options lput a-id activity-options
+      set a-id a-id + 1
+    ]
+    
+    ;; generate the required number of trips
+    let n-trips (random max-n-activities) + 1
+    let temp-building nobody
+    ;; iterate through the trips to allocate parameter values
+    repeat n-trips [
+      ;; allocate activity
+      set temp-building one-of buildings with [ b-type = "building" and not member? self [b-destinations] of myself ]
+      set b-destinations lput temp-building b-destinations
+      let a one-of activity-options
+      set activity lput a activity
+      set activity-options remove a activity-options
+      
+      ;; allocate period threshold percentages
+      let percent-list (list period-threshold-1 period-threshold-2 period-threshold-3 period-threshold-4)
+      let a-index a - 1
+      let mean-percent item a-index percent-list
+      let std-percent period-threshold-std
+      let minimum 0
+      let maximum nobody ;; implies truncated-normal will ignore the maximum restriction
+      let percent truncated-normal minimum maximum mean-percent std-percent
+      set cancel-periods-% lput percent cancel-periods-%
+      
+      ;; allocate modify? and modify-type
+      set modify? lput false modify?
+      set modify-type lput nobody modify-type
+    ]
+    
+    ;; add the home as the final trip if required
+    if return-home? = true [
+      set b-destinations lput my-home b-destinations
+      set activity lput 0 activity
+      set activity-weight lput 1 activity-weight
+      set cancel-periods-% lput nobody cancel-periods-%   ;; implies the activity will never be cancelled
+      set modify? lput false modify?
+      set modify-type lput nobody modify-type
+    ]
+    ;; allocate first bulding in b-destinations list as the next b-destination
+    set b-destination item 0 b-destinations
+    ;; generate the trip to the first b-destination
+    let trip-temp nobody
+    let o [nearest-node] of my-home
+    let d [nearest-node] of b-destination
+    
+    ;; route finding algorithm for pedestrians
+    if public-transport? = false [
+      ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ]
+    ]
+
+    ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+    set trip trip-temp
+    ;; set the target times and expected periods to reach b-destinations
+    foreach b-destinations [
+      b -> 
+      let i position b b-destinations
+      let target-time report-target-time-pedestrians b
+      set target-times lput target-time target-times
+      let expected-period report-expected-period-pedestrians b
+      set expected-periods lput expected-period expected-periods
+      ;; cancel periods calculations
+      let cancel-period-% item i cancel-periods-%
+      ifelse cancel-period-% = nobody 
+      [set cancel-periods lput nobody cancel-periods]
+      [set cancel-periods lput (expected-period * (cancel-period-% / 100)) cancel-periods]
+    ]
+    
+    ;; calculate weights
+    foreach cancel-periods [
+      p -> 
+      ifelse max cancel-periods = 0 or p = nobody 
+      [set activity-weight lput 1 activity-weight]
+      [
+        let w 1 - (p / max cancel-periods)
+        set activity-weight lput w activity-weight
+      ]
+    ]
+  ]
+end
+
+;; set the target times to reach an input building as a destination
+to-report report-target-time-pedestrians [input-destination]
+  ;; find the index of the input destination in b-destinations
+  let i position input-destination b-destinations
+  ;; generate the target time for the trip
+  ;; if this is the first b-destination, move from home
+  let o nobody ;; origin
+  let d [nearest-node] of input-destination ;; destination
+  ifelse i = 0 
+  [set o [nearest-node] of my-home] ;; if the b-destination is the first, move from home
+  [set o [nearest-node] of item (i - 1) b-destinations] ;; else, move from the prior destination
+  let trip-temp nobody
+  ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+  let expected-period-temp 0
+  foreach trip-temp [ r -> set expected-period-temp expected-period-temp + ([distance_to_destination] of r / top-speed) ] ;; find the total expected period
+  let target-time 0
+  ifelse length target-times = 0
+  [set target-time 0                   + expected-period-temp + (min-home-duration-pedestrians * (60 / tick-time-scale)) + (random (max-home-duration-pedestrians - min-home-duration-pedestrians) * (60 / tick-time-scale))] ;; if this is the first target time
+  [set target-time (last target-times) + expected-period-temp + (random max-activity-duration * (60 / tick-time-scale))] ;; if this not the first target time, start the calculation from the last time
+  report int target-time
+end
+
+;; report the expected-period the pedestrian will take towards an input destination
+to-report report-expected-period-pedestrians [input-destination]
+  ;; find the index of the input destination in b-destinations
+  let i position input-destination b-destinations
+  ;; generate the target time for the trip
+  ;; if this is the first b-destination, move from home
+  let o nobody ;; origin
+  let d [nearest-node] of input-destination ;; destination
+  ifelse i = 0 
+  [set o [nearest-node] of my-home] ;; if the b-destination is the first, move from home
+  [set o [nearest-node] of item (i - 1) b-destinations] ;; else, move from the prior destination
+  let trip-temp nobody
+  ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+  let expected-period-temp 0
+  foreach trip-temp [ r -> set expected-period-temp expected-period-temp + (([distance_to_destination] of r) / top-speed) ] ;; find the total expected period
+  report expected-period-temp
+end
+
+;; pedestrians travel through the road network
+to pedestrians-travel
+  ;#################################################################################################################################################
+  ;; Part 1: pedestrian is at an activity
+  
+  ;; generate the trip
+  ;; assure the trip is not empty
+  ;; find the expected period for the trip
+  ifelse at-activity? [
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; Step 1: find the next viable building destination
+    ; Being addressed in version 2.0.1
+    ;; if public transport is set to true, the pedestrian has to consider two trip options to the next destination
+    
+    ;; iterate through the b-destinations until you find one with a lengthy trip
+    while [length trip = 0 and i-destination + 1 < length b-destinations and i-leg + 1 >= length trip-legs] [
+      move-to b-destination
+      set i-destination i-destination + 1
+      set b-destination item i-destination b-destinations
+      let o [nearest-node] of location ;; origin is location because vehicle is at an activity
+      let d [nearest-node] of item i-destination b-destinations
+      let trip-temp nobody
+      ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ]
+      set trip trip-temp
+    ]
+    
+    ;; if the vehicle is targeting the last b-destination and the destination is very close
+    if b-destination = last b-destinations and length trip = 0 [
+      move-to b-destination
+      set active? false
+      stop
+    ]
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; Step 2: find the proper trip legs (decide whether to walk or take the bus)
+    ;; if the pedestrian can consider using public transport, and it has not planned its trip legs yet, this means that:
+    ;; 1. The pedestrian trip-leg was not created in the while function as bus options has to be considered
+    ;; 2. The pedestrian did not go into this function before as legs are later created in this function
+    (ifelse public-transport? and length trip-legs = 0 [ 
+      ;; generaete two trips, one walking only and one with potential use of public transport
+      let o [nearest-node] of location ;; origin is location because vehicle is at an activity
+      let d [nearest-node] of item i-destination b-destinations
+      let search-dist public-transport-search-radius ; miles ;; search distance around the origin and destination for bus stops
+      let increment search-radius-increase-increment ; miles ;; increment of increase of search-dist in case no bus stops are found
+      let o-SPs nobody  ; origin bus stops
+      let d-SPs nobody  ; destination bus stops
+      
+      let o-d-SPs-lists (list)  ;; list of origin and destination bus stops that fit the desired trip
+      let buses-ids (list)      ;; list of bus service numbers corresponding to the o-d-SPs-lists
+      
+      
+      
+      ;; while there are no paired options between an origin stop point and a destination stop point, keep increasing the search radius
+      while [length o-d-SPs-lists = 0] [
+        ;; find the origin stop points within the search radius
+        ;; assure the radius includes at least 2 stop points (to avoid cases where 1 stop point in the incorrect direction is included)
+        ask o [set o-SPs (nodes in-radius (mile-to-model-factor * search-dist)) with [sp-id > 0]]
+        ask d [set d-SPs (nodes in-radius (mile-to-model-factor * search-dist)) with [sp-id > 0]]
+        if any? o-SPs and any? d-SPs [
+          ask o-SPs [
+            ;; loop through the lists of next stop points (each list represents a service)
+            foreach next-SPs [
+              next-SPs-item ->
+              let i position next-SPs-item next-SPs
+              ;; check if one of the destination stop points exists in the next stop points of the origin stop point
+              ask d-SPs [
+                ;; allocate the bus service number
+                ;; allocate the origin and the destination to the list of possible bus routes
+                if member? sp-id next-SPs-item [ 
+                  set o-d-SPs-lists lput (list myself self) o-d-SPs-lists
+                  set buses-ids lput (item i buses-id) buses-ids
+                ]
+              ]
+            ]
+          ]
+        ]
+        set search-dist search-dist + increment
+      ]
+      
+      ;; initialise temporary parameters
+      let trip-temp nobody
+      let trip-walk-period nobody
+      let trip-bus-period nobody
+      let leg-1-walk-period 0
+      let leg-2-bus-period 0
+      let leg-3-walk-period 0
+      let periods-options (list)
+      let legs-periods-options (list)
+      
+      ;; back to calling the agent (pedestrian)
+      ;; loop through each of the start point origins and destinations
+      foreach o-d-SPs-lists [
+        o-d-SPs ->
+        set leg-1-walk-period 0
+        set leg-2-bus-period 0
+        set leg-3-walk-period 0
+        let trip-1 nobody
+        let trip-3 nobody
+        let o-SP item 0 o-d-SPs
+        let d-SP item 1 o-d-SPs
+        ;; calculate the time taken to finish each leg (this assumes no waiting for the bus)
+        ask o [ set trip-1 nw:weighted-path-to o-SP distance_to_destination ]
+        foreach trip-1 [ r -> set leg-1-walk-period leg-1-walk-period + (([distance_to_destination] of r) / top-speed) ] ;; find the total expected period for leg 1
+        ask o-SP [ set leg-2-bus-period nw:weighted-distance-to d-SP current_period]
+        ask d [ set trip-3 nw:weighted-path-to d-SP distance_to_destination ]
+        foreach trip-3 [ r -> set leg-3-walk-period leg-3-walk-period + (([distance_to_destination] of r) / top-speed) ] ;; find the total expected period for leg 3
+                                                                                                                         ;        ask d [ set leg-3-walk-period nw:weighted-distance-to d-SP mean_period_walk ]
+                                                                                                                         ;; add the total time to the periods options
+        set periods-options lput (leg-1-walk-period + leg-2-bus-period + leg-3-walk-period) periods-options
+        set legs-periods-options lput (list leg-1-walk-period leg-2-bus-period leg-3-walk-period) legs-periods-options
+      ]
+      ;; allocate the selected bus route as the one with the shortest period
+      set trip-bus-period min periods-options
+      
+      ;; find the walking trip period without using any buses
+      ask o [ set trip-walk-period nw:weighted-distance-to d mean_period_walk ]
+      
+      ;; check the quicker option of a full walk or a bus trip (with 2 walking legs)
+      ifelse trip-walk-period <= trip-bus-period [ ;; if the walk trip is more time efficient, find the trip links to walk
+        ask o [set trip-temp nw:weighted-path-to d distance_to_destination]
+        set trip-legs (list trip-temp)
+        set trip trip-temp
+        set trip-legs-modes (list "walk")
+        set trip-legs-expected-periods (list trip-walk-period)
+        set i-leg 0
+      ]
+      [ ;; if the bus trip is more time efficient, find the (1) trip links to walk to bus station node, (2) bus station node to leave bus, (3) trip links to walk to destination node
+        let i position trip-bus-period periods-options
+        let legs-periods item i legs-periods-options
+        let bus-template one-of templates with [service = item i buses-ids]
+        let o-d-SPs item i o-d-SPs-lists
+        let o-SP item 0 o-d-SPs
+        let d-SP item 1 o-d-SPs
+        let trip-1 nobody
+        let trip-2 nobody
+        let trip-3 nobody
+        ;; find the road links of the first leg of the trip
+        ask o [ set trip-1 nw:weighted-path-to o-SP distance_to_destination ]
+        ;; assign the stop point node to leave the bus at as the second leg of the trip
+        set trip-2 (list o-SP bus-template d-SP)
+        ;; find the road links of the third leg of the trip
+        ask d-SP [ set trip-3 nw:weighted-path-to d distance_to_destination ]
+        set trip-legs (list trip-1 trip-2 trip-3)
+        set trip-legs-modes (list "walk" "bus" "walk")
+        set trip-legs-expected-periods (list (item 0 legs-periods) (item 1 legs-periods) (item 2 legs-periods))
+        set trip trip-1
+        set i-leg 0
+        set expected-periods replace-item i-destination expected-periods trip-bus-period
+      ]
+      ]
+      
+      ;; if public transport is not considered
+      not public-transport? and length trip-legs = 0 [
+        set trip-legs (list trip) ;; a trip leg is created based on the initial trip generated in the while loop at the beginning of the pedestrians-travel function
+        set trip-legs-modes (list "walk")
+        set trip-legs-expected-periods (list item i-destination expected-periods)
+      ]
+    )
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; Step 3: Start moving from activity at the correct time step
+    (ifelse 
+      ;; if the trip consists of 1 leg (walk only)
+      length trip-legs = 1 [
+        ;; find the target time and remove from activity if the trip must start
+        let target-time item i-destination target-times
+        let expected-period item i-destination expected-periods
+        if ticks + buffer-period + expected-period >= target-time [
+          let o-node nobody
+          ifelse i-destination = 0 [set o-node [nearest-node] of my-home]
+          [set o-node [nearest-node] of item (i-destination - 1) b-destinations]
+          
+          move-to o-node
+          pedestrians-set-destination o-node
+          set remaining-progress progress   ; Set initial remaining progress
+          set at-activity? false
+          pedestrians-update-colour
+        ]
+      ]
+      
+      ;; if the trip consists of 3 legs (walk, bus, walk)
+      length trip-legs = 3 [
+        ;; find the target time and remove from activity if the trip must start
+        let target-time item i-destination target-times
+        let expected-period item i-destination expected-periods
+        let leg-1-expected-period item 0 trip-legs-expected-periods
+        let leg-2-expected-period item 1 trip-legs-expected-periods
+        let leg-3-expected-period item 2 trip-legs-expected-periods
+        let leg-2-trip item 1 trip-legs
+        let o-sp item 0 leg-2-trip
+        let bus-template item 1 leg-2-trip
+        let d-sp item 2 leg-2-trip
+        ;; find the position of the bus service id in the buses list of the destination stop point node
+        ;; find the s
+        let service-no [service] of bus-template
+        ;        show [location] of bus-template
+        ;; get the bus schedules in the origin and destination stop points
+        let d-sp-schedule nobody
+        let o-sp-schedule nobody
+        ask o-sp [
+          let i position service-no buses-id
+          set o-sp-schedule item i buses-schedule
+        ]
+        ask d-sp [
+          let i position service-no buses-id
+          set d-sp-schedule item i buses-schedule
+        ]
+        ;; backtrack the trip, starting from the final destination to the destination stop point
+        ;; find the hypothetical latest time for arrival at the destination stop point to reach the activity on time
+        let d-sp-target-time target-time - leg-3-expected-period
+        ;; find the actual latest bus arrival time at the destination (based on the service schedule) to reach the activity destination on time
+        set d-sp-target-time max (filter [t -> t <= d-sp-target-time] d-sp-schedule)
+        ;; find the item index of the target
+        let i position d-sp-target-time d-sp-schedule
+        let o-sp-target-time item i o-sp-schedule
+        
+        if ticks + buffer-period + leg-1-expected-period > o-sp-target-time ;; if the expected arrival time to the origin stop point is higher than the respective target
+        or ticks + buffer-period + expected-period > target-time [ ;; or if the expected arrival time to the final destination is higher than the respective target
+          let o-node nobody
+          ifelse i-destination = 0 [set o-node [nearest-node] of my-home]
+          [set o-node [nearest-node] of item (i-destination - 1) b-destinations]
+          
+          move-to o-node
+          ;; if the trip includes elements (i.e., a walk trip with roads)
+          ifelse length trip > 0 [
+            pedestrians-set-destination o-node
+            set remaining-progress progress   ; Set initial remaining progress
+          ]
+          ;; if the trip does not include elements (i.e., the closest node to the activity location is the targeted origin bus stop)
+          [
+            set trip item (i-leg + 1) trip-legs
+            set i-leg i-leg + 1
+            set trip but-first trip
+            set location o-node
+            set destination item 1 trip
+            set progress scaled-distance location
+            set waiting? true
+            
+          ]
+          
+          set at-activity? false
+          pedestrians-update-colour
+        ]
+      ]
+    )
+  ]
+  
+  
+  
+  ;#################################################################################################################################################
+  ;; Part 2: pedestrian is not at an activity (i.e., moving across the network, waiting for a bus, on a bus, or got off the bus)
+  
+  ; If the vehicle is not at an activity
+  [
+    ;; color based on the number of the b-destination
+    set color 44 - i-destination
+    
+    ; see what vehicles there are ahead
+    
+    ;; if the trip consists of roads (meaning, it is not a bus stops trip)
+    (ifelse item i-leg trip-legs-modes = "walk" [move-at-pedestrians-speed]
+    item i-leg trip-legs-modes = "bus" [move-in-bus])  ;; the bus trip must already be included as the `trip` of the pedestrian
+    
+    ;; if the trip is not empty, meaning the pedestrian is walking
+    ; If the pedestrian reaches end of road, start on the next road of the trip if there is one
+    if on-bus? = false and waiting? = false and scaled-distance location >= progress and not empty? trip [
+;      if check-ahead [
+        set destination-time ticks ; update the destination time
+        set location-time ticks ; update the new location time
+        let difference scaled-distance location - progress ; Calculate remaining distance
+                                                           ; remove current trip link and proceed to the next link (new origin is the old destination)
+        pedestrians-set-destination destination ; the input to pedestrians-set-destination is the new origin
+                                                ; a road link is removed from the trip here
+        set speed difference
+        move-at-pedestrians-speed
+        set speed top-speed
+;      ]
+    ]
+    
+    ;;
+    ; If the pedestrian reaches end of road and it is the last road link in the trip
+    (ifelse scaled-distance location >= progress and empty? trip and i-leg + 1 = length trip-legs [
+      set destination-time ticks ; update the destination time
+      ;; assure the road period is updated only in case the pedestrian was moving
+      ;; if location is not equal to destination, this means that the pedestrian the current leg in the trip-legs is empty
+      if location != destination [
+        ask road [who] of location [who] of destination [ ; allocate the period to the road link
+          set current_period [destination-time] of myself - [location-time] of myself
+        ]
+      ]
+      
+      set location-time ticks ; update the new location time
+      set location b-destination
+      move-to b-destination
+      ;; update periods
+      set times lput ticks times
+      let current-period (ticks - sum periods)
+      set periods lput current-period periods
+      ;; update delays
+      let current-delay ticks - item i-destination target-times
+      set delays lput current-delay delays
+      ;; check if there is a need to modify the activity
+      if item i-destination cancel-periods != nobody and current-period > item i-destination cancel-periods [
+        set modify? replace-item i-destination modify? true
+        set modify-type replace-item i-destination modify-type "cancel" ;; placeholder until input data from survey is used
+        set activity-record lput (item i-destination activity) (activity-record)
+        set delay-record lput current-delay delay-record
+        set threshold-record lput (item i-destination cancel-periods) (threshold-record)
+        set weight-record lput (item i-destination activity-weight) weight-record
+        set period-record lput current-period period-record
+        set modify-record lput (item i-destination modify-type) modify-record
+      ]
+      
+      ;; proceed to the next trip if possible
+      ;; if the pedestrian reached a b-destination that is not its last b-destination
+      ifelse b-destination != last b-destinations [
+        set i-destination i-destination + 1
+        set b-destination item i-destination b-destinations
+        set at-activity? true
+        set trip-legs (list)
+        set trip-legs-expected-periods (list)
+        set trip-legs-modes (list)
+        set i-leg 0
+        pedestrians-update-colour
+        let o [nearest-node] of location ;; origin is location because vehicle is at an activity
+        let d [nearest-node] of b-destination
+        let trip-temp nobody
+        ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+        set trip trip-temp
+      ]
+      [ ;; if the pedestrian reached its last b-destination
+        set at-activity? true
+        set active? false
+        move-to b-destination
+        pedestrians-update-colour
+      ]
+    ]
+      ; If the pedestrian reached end of road and it is the last road link in the trip, but there is another upcoming trip leg
+      scaled-distance location >= progress and empty? trip and i-leg + 1 < length trip-legs [
+        
+        (ifelse 
+          ;; if the next leg is a bus trip (prepare it for the move-in-bus-trip)
+          item (i-leg + 1) trip-legs-modes = "bus" [
+            set trip item (i-leg + 1) trip-legs
+            set trip but-first trip
+            move-to destination
+            set location destination
+            set destination item 1 trip
+            set progress scaled-distance location
+            set waiting? true
+          ]
+
+          ;; if the next leg is a walk trip -- i.e., got off the bus (prepare it for the move-at-pedestrians-speed)
+          item (i-leg + 1) trip-legs-modes = "walk" 
+          and length item (i-leg + 1) trip-legs > 0 
+          [ 
+            set trip item (i-leg + 1) trip-legs
+            set location destination
+            pedestrians-set-destination location
+          ]
+          
+          ;; if the next leg is a walk trip and this is in the middle of the trip from an activity -- i.e., got off the bus (prepare it for the move-at-pedestrians-speed)
+          item (i-leg + 1) trip-legs-modes = "walk" 
+          and length item (i-leg + 1) trip-legs = 0 
+          [ 
+            set trip item (i-leg + 1) trip-legs
+            set location destination
+            set destination destination
+          ]
+          
+        )
+        set i-leg i-leg + 1
+      ]
+    )
+  ]
+end
+
+;; pedestrians travel through the road network
+to pedestrians-travel-old
+  ;; generate the trip
+  ;; assure the trip is not empty
+  ;; find the expected period for the trip
+  ifelse at-activity? [
+    ;; iterate through the b-destinations until you find one with a lengthy trip
+    while [length trip = 0 and i-destination + 1 < length b-destinations] [
+      move-to b-destination
+      set i-destination i-destination + 1
+      set b-destination item i-destination b-destinations
+      let o [nearest-node] of location ;; origin is location because pedestrian is at an activity
+      let d [nearest-node] of item i-destination b-destinations
+      let trip-temp nobody
+      ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+      set trip trip-temp
+    ]
+    ;; if the vehicle is targeting the last b-destination and the destination is very close
+    if b-destination = last b-destinations and length trip = 0 [
+      move-to b-destination
+      set active? false
+    ]
+    
+    ;; find the target time and remove from activity if the trip must start
+    let target-time item i-destination target-times
+    let expected-period item i-destination expected-periods
+    if ticks + buffer-period + expected-period >= target-time [
+      let o-node nobody
+      ifelse i-destination = 0 [set o-node [nearest-node] of my-home]
+      [set o-node [nearest-node] of item (i-destination - 1) b-destinations]
+      
+      move-to o-node
+      pedestrians-set-destination o-node
+      set remaining-progress progress   ; Set initial remaining progress
+      set at-activity? false
+      pedestrians-update-colour
+      
+    ]
+  ]
+  ; If the pedestrian is not at an activity
+  [
+    ;; color based on the number of the b-destination
+    set color 44 - i-destination
+    
+    ; see what vehicles there are ahead
+    move-at-pedestrians-speed
+    
+    ; If the vehicle reaches end of road, start on the next road of the trip if there is one
+    if scaled-distance location >= progress and not empty? trip [
+      if check-ahead [
+        set destination-time ticks ; update the destination time
+        set location-time ticks ; update the new location time
+        let difference scaled-distance location - progress ; Calculate remaining distance
+                                                           ; remove current trip link and proceed to the next link (new origin is the old destination)
+        pedestrians-set-destination destination ; the input to pedestrians-set-destination is the new origin
+        set speed difference
+        move-at-pedestrians-speed
+        set speed top-speed
+      ]
+    ]
+    
+    
+    ;;
+    ; If the vehicle reaches end of road and it is the last road link in the trip
+    if scaled-distance location >= progress and empty? trip [
+      set destination-time ticks ; update the destination time
+      ask road [who] of location [who] of destination [ ; allocate the period to the road link
+        set current_period [destination-time] of myself - [location-time] of myself
+      ]
+      set location-time ticks ; update the new location time
+      set location b-destination
+      move-to b-destination
+      ;; update periods
+      set times lput ticks times
+      let current-period (ticks - sum periods)
+      set periods lput current-period periods
+      ;; update delays
+      let current-delay ticks - item i-destination target-times
+      set delays lput current-delay delays
+      ;; check if there is a need to modify the activity
+      if item i-destination cancel-periods != nobody and current-period > item i-destination cancel-periods [
+        set modify? replace-item i-destination modify? true
+        set modify-type replace-item i-destination modify-type "cancel" ;; placeholder until input data from survey is used
+        set activity-record lput (item i-destination activity) (activity-record)
+        set delay-record lput current-delay delay-record
+        set threshold-record lput (item i-destination cancel-periods) (threshold-record)
+        set weight-record lput (item i-destination activity-weight) weight-record
+        set period-record lput current-period period-record
+        set modify-record lput (item i-destination modify-type) modify-record
+      ]
+      
+      ;; proceed to the next trip if possible
+      ;; if the vehicle reached a b-destination that is not its last b-destination
+      ifelse b-destination != last b-destinations [
+        set i-destination i-destination + 1
+        set b-destination item i-destination b-destinations
+        set at-activity? true
+        pedestrians-update-colour
+        let o [nearest-node] of location ;; origin is location because vehicle is at an activity
+        let d [nearest-node] of b-destination
+        let trip-temp nobody
+        ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+        set trip trip-temp
+      ]
+      [ ;; if the vehicle reached its last b-destination
+        set at-activity? true
+        set active? false
+        move-to b-destination
+        pedestrians-update-colour
+      ]
+    ]
+  ]
+end
+
+
+;; update the colour of the pedestrian based on the number of activities it ahs finalised
+to pedestrians-update-colour
+  ifelse at-activity? [set color black]
+  [set color 44 - i-destination]
+end
+
+;; move pedestrians if they are active
+to pedestrians-move
+;  ifelse my-home = location and b-destination != my-home and moving = true [
+  if active? = true [pedestrians-travel]
+end
+
+;; move pedestrian at its correct speed
+;; does not check the pedestrians ahead
+to move-at-pedestrians-speed
+  fd speed * mile-to-model-factor ; Move forward
+  set remaining-progress scaled-distance destination ; Update remaining progress distance
+end
+
+to move-in-bus
+  ;; check for buses
+  (ifelse
+    ;; if the pedestrian is waiting in a bus stop for a bus
+    on-bus? = false 
+    and waiting? = true 
+    and is-template? item 0 trip 
+    and any? buses with [
+      location = [location] of myself
+      and service = [service] of item 0 [trip] of myself
+      and member? ([destination] of myself) remaining-sp-destinations
+    ] 
+    [
+      let target-service [service] of item 0 trip
+      let found-bus nobody
+      let created-link nobody
+      ask buses with [location = [location] of myself and service = target-service and at-sp? = true and member? ([destination] of myself) remaining-sp-destinations and capacity < max-capacity] [
+        set found-bus self
+        set capacity capacity + 1
+        set label capacity
+        create-passenger-with myself [
+          tie
+          set created-link self
+        ]
+      ]
+      if is-bus? found-bus [
+        set on-bus? true
+        set waiting? false
+        set current-bus found-bus
+        set passenger-link created-link
+        set trip but-first trip
+        set location found-bus
+        set destination item 0 trip
+      ]
+    ]
+    
+    ;; if the pedestrian is on a bus and reached its target bus stop
+    on-bus? = true and is-node? item 0 trip and [location] of current-bus = item 0 trip [
+      ask passenger-link [die]
+      set on-bus? false
+      set waiting? false
+      set location item 0 trip
+      set destination item 0 trip
+      set trip but-first trip
+      ask current-bus [
+        set capacity capacity - 1
+        set label capacity
+      ]
+      set current-bus nobody
+    ]
+  )
+end
+
+;; Moves to the next link once called
+;; `new-location` refers to the new origin of the trip,
+;; when called by a vehicle, this `new-location` (new origin) is the vehicle's previous `destination` (old destination)
+to pedestrians-set-destination [new-location]
+  
+  let new-road first trip
+  set trip but-first trip
+  let new-destination 0
+  
+  ; Select the correct end of the road for the new destination
+  ask  new-road [  
+    ifelse end1 = new-location[
+      set new-destination end2
+    ][
+      set new-destination end1
+    ]
+  ]
+  set location new-location
+  set destination new-destination
+  move-to location                   ; Move to the new location
+  face destination                   ; Face the new destination
+  set progress scaled-distance destination
+end

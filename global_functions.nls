@@ -1,0 +1,61 @@
+to calculate-model-to-mile-factor
+  ;; scale the calculated distances to mile (regardless of the size of the space)
+  set model-to-mile-factor 0
+  ask road reference-road-id-1 reference-road-id-2 [
+    set model-to-mile-factor reference-road-miles / distance_to_destination
+    set mile-to-model-factor distance_to_destination / reference-road-miles
+  ]
+end
+
+;; report the distance scaled as the map (in miles)
+to-report scaled-distance [input-node]
+  report (distance input-node) * model-to-mile-factor
+end
+
+to-report minutes-to-ticks [minutes]
+  report (minutes * 60) / tick-time-scale
+end
+
+;;; reports the road networks given a series of nodes as destinations
+;to-report trip-from-series-nodes [series-nodes series-modes]
+;  let collated-trip (list)
+;  foreach series-nodes [
+;    o ->
+;    let i-o position o series-nodes
+;    if o != last series-nodes [
+;      let i-d i-o + 1
+;      let d item i-d series-nodes
+;      let mode item i-d series-modes
+;      let trip-temp nobody
+;      (ifelse
+;        mode = "walk" or mode = "car" [ask o [set trip-temp nw:weighted-path-to d distance_to_destination]]
+;        mode = "bus" [ask o [set trip-temp nw:weighted-path-to d (distance_to_destination_bus)]]
+;      )
+;      
+;      foreach trip-temp [
+;        l ->
+;        set collated-trip lput l collated-trip
+;      ]
+;    ]
+;  ]
+;  report collated-trip
+;end
+;
+;to-report series-trip-temp [series-nodes series-mode]
+;  let i-o 0
+;  let collated-trip (list)
+;  while [i-o < length series-nodes] [
+;    let o item i-o series-nodes
+;    if o != last series-nodes [
+;      let i-d i-o + 1
+;      let d item i-d series-nodes
+;      let trip-temp nw:weighted-path-to d distance_to_destination
+;      foreach trip-temp [
+;        l ->
+;        set collated-trip lput l collated-trip
+;      ]
+;    ]
+;    set i-o i-o + 1
+;  ]
+;  report collated-trip
+;end

@@ -1,0 +1,1337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<model version="NetLogo 7.0.0" snapToGrid="true">
+  <code><![CDATA[; Include any necessary libraries
+extensions [ nw  csv]
+__includes ["buses.nls" "cars.nls" "nodes.nls" "buildings.nls" "pedestrians.nls" "global_functions.nls"]
+
+; monitors
+globals [
+  all-periods
+  all-delays
+  n-trips-list
+  model-to-mile-factor
+  mile-to-model-factor
+]
+
+
+; Set up the simulation
+to setup
+  ifelse control-seed? 
+  [random-seed current-seed]
+  [
+    set current-seed new-seed
+    random-seed current-seed
+  ]
+  clear-all  ; Clear any existing data
+  set all-periods (list)
+  set all-delays (list)
+  set n-trips-list (list)
+  ask patches[ set pcolor white ]
+  load-network
+  load-buildings
+  load-buses
+  init-buses-parameters-network
+  cars-init number-of-cars ; Initialize vehicles
+  pedestrians-init number-of-pedestrians
+  let vehicles (turtle-set cars buses)
+  ask vehicles [if b-destinations != 0 [set n-trips-list lput (length b-destinations) (n-trips-list)] ]
+  reset-ticks ; Reset the tick counter
+  reset-timer
+;  go
+end
+
+
+; Advance the simulation by one tick
+to go
+  let flag true
+  carefully [
+    ask roads [
+      set current_speeds (list)
+    ]
+    let vehicles (turtle-set cars buses)
+    ask vehicles [
+      let pre-period periods
+      let pre-delay delays
+      vehicles-move ; Move the vehicles
+      let post-period periods
+      let post-delay delays
+      if pre-period != post-period [
+        set all-periods lput (last post-period) (all-periods)
+        set all-delays lput (last post-delay) (all-delays)
+      ]
+      if active? = true [set flag false]
+    ]
+    ask pedestrians [
+      pedestrians-move
+      if active? = true [set flag false]
+    ]
+    if flag = true [
+      ;    if ticks > 0 [type timer type "\n"]
+      stop
+    ]
+    buses-start-SPs
+    update-SPs
+;    if count cars = 0 and count pedestrians = 0 [stop]
+    tick ; Advance the tick counter
+  ]
+  
+  [
+    error (word
+      "Failure: run=" behaviorspace-run-number
+      ", seed=" current-seed
+      ", ticks=" ticks
+      ", number-of-cars=" number-of-cars
+      ", number-of-pedestrians=" number-of-pedestrians
+      "\n Error message: " error-message
+    )
+  ]
+  
+  ;; added as carefully does not allow behaviour space runs to stop
+  if flag = true [stop]
+end
+
+to go-infinite
+  let flag true
+  let vehicles (turtle-set cars buses)
+  ask vehicles [
+    let pre-period periods
+    let pre-delay delays
+    vehicles-move ; Move the vehicles
+    let post-period periods
+    let post-delay delays
+    if pre-period != post-period [
+      set all-periods lput (last post-period) (all-periods)
+      set all-delays lput (last post-delay) (all-delays)
+    ]
+    if active? = true[
+      set flag false
+    ]
+  ]
+  ask pedestrians [
+    pedestrians-move
+    if active? = true [set flag false]
+  ]
+  buses-start-SPs
+  update-SPs
+  tick ; Advance the tick counter
+  if flag = true [
+;    if ticks > 0 [type timer type "\n"]
+    if control-seed? [set current-seed current-seed + 1]
+    setup
+  ]
+
+end
+
+
+; Public Domain:
+; adapted from code by Uri Wilensky
+; To the extent possible under law, ric colasanti has waived all
+; copyright and related or neighboring rights to this model.]]></code>
+  <widgets>
+    <view x="380" wrappingAllowedX="false" y="25" frameRate="30.0" minPycor="0" height="564" showTickCounter="true" patchSize="5.545" fontSize="10" wrappingAllowedY="false" width="564" tickCounterLabel="ticks" maxPycor="100" updateMode="1" maxPxcor="100" minPxcor="0"></view>
+    <slider x="25" step="20" y="25" max="500" display="number-of-cars" height="33" min="0" direction="Horizontal" default="200.0" variable="number-of-cars" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="20" y="25" max="500" display="number-of-pedestrians" height="33" min="0" direction="Horizontal" default="300.0" variable="number-of-pedestrians" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="0.5" y="95" max="4" display="fastest-pedestrian" height="33" min="1" direction="Horizontal" default="4.0" variable="fastest-pedestrian" units="mph" width="170" sizeVersion="0"></slider>
+    <button x="380" y="595" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="170">setup</button>
+    <button x="380" y="685" height="40" disableUntilTicks="true" forever="true" kind="Observer" width="170" display="go">go</button>
+    <button x="380" y="640" height="40" disableUntilTicks="true" forever="false" kind="Observer" width="170" display="go once">go</button>
+    <note x="750" y="595" backgroundDark="0" fontSize="8" width="170" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Control the seed value (Note that go-infinite increments the current-seed value every tick)</note>
+    <button x="570" y="595" height="40" disableUntilTicks="true" forever="true" kind="Observer" width="170" display="go-infinite">go-infinite</button>
+    <slider x="570" step="1" y="685" max="1000" display="current-seed" height="33" min="0" direction="Horizontal" default="5.86725296E8" variable="current-seed" width="170" sizeVersion="0"></slider>
+    <switch x="570" y="640" height="40" on="false" variable="control-seed?" width="170" display="control-seed?"></switch>
+    <note x="960" y="58" backgroundDark="0" fontSize="8" width="285" markdown="true" height="20" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Elapsed time in the simulation (hh mm ss)</note>
+    <monitor x="1055" precision="17" y="74" height="61" fontSize="11" width="100" display="Minutes">floor ((ticks * tick-time-scale) / 60) - (floor ((ticks * tick-time-scale) / (60 * 60))) * 60</monitor>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Vehicle" y="260" xMin="0.0" height="120" legend="false" xMax="1000.0" yMin="0.0" width="290" xAxis="Time step" display="Trip time histogram">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="1" display="default" color="-16777216" legend="true">
+        <setup></setup>
+        <update>histogram all-periods
+set-histogram-num-bars 100</update>
+      </pen>
+    </plot>
+    <monitor x="1150" precision="17" y="74" height="61" fontSize="11" width="100" display="Seconds">(floor ((ticks * tick-time-scale))) - ((floor ((ticks * tick-time-scale) / 60) - (floor ((ticks * tick-time-scale) / (60 * 60))) * 60) * 60)</monitor>
+    <monitor x="960" precision="17" y="74" height="61" fontSize="11" width="100" display="Hours">floor ((ticks * tick-time-scale) / (60 * 60))</monitor>
+    <slider x="960" step="0.1" y="24" max="0.5" display="tick-time-scale" height="33" min="0" direction="Horizontal" default="0.2" variable="tick-time-scale" units="Second(s)" width="290" sizeVersion="0"></slider>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Trip time" y="140" xMin="0.0" height="120" legend="false" xMax="10.0" yMin="0.0" width="290" xAxis="Time step" display="Average time per trip">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="0" display="default" color="-16777216" legend="true">
+        <setup></setup>
+        <update>ifelse all-periods != (list) [plot mean all-periods] [plot 0]</update>
+      </pen>
+    </plot>
+    <slider x="25" step="10" y="60" max="100" display="slowest-car" height="33" min="10" direction="Horizontal" default="40.0" variable="slowest-car" units="mph" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="0.5" y="95" max="4" display="slowest-pedestrian" height="33" min="1" direction="Horizontal" default="2.5" variable="slowest-pedestrian" units="mph" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="10" y="60" max="100" display="fastest-car" height="33" min="10" direction="Horizontal" default="100.0" variable="fastest-car" units="mph" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="10" y="130" max="100" display="fastest-bus" height="33" min="10" direction="Horizontal" default="40.0" variable="fastest-bus" units="mile/hour" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="10" y="130" max="100" display="slowest-bus" height="33" min="10" direction="Horizontal" default="20.0" variable="slowest-bus" units="mile/hour" width="170" sizeVersion="0"></slider>
+    <chooser x="25" y="590" height="45" variable="threshold-input-type" current="1" display="threshold-input-type" width="345" sizeVersion="0">
+      <choice type="string" value="Empirical"></choice>
+      <choice type="string" value="Controlled"></choice>
+    </chooser>
+    <note x="25" y="560" backgroundDark="0" fontSize="8" width="345" markdown="true" height="30" textColorDark="-1" textColorLight="-16777216" backgroundLight="0"><![CDATA[period-threshold-<n> are percentages multiplied by the expected travel period to find the travel period threshold in ticks at which an activity modification is requested.]]></note>
+    <slider x="25" step="5" y="640" max="200" display="period-threshold-1" height="33" min="100" direction="Horizontal" default="105.0" variable="period-threshold-1" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="675" max="200" display="period-threshold-2" height="33" min="0100" direction="Horizontal" default="110.0" variable="period-threshold-2" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="710" max="200" display="period-threshold-3" height="33" min="100" direction="Horizontal" default="150.0" variable="period-threshold-3" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="745" max="200" display="period-threshold-4" height="33" min="100" direction="Horizontal" default="200.0" variable="period-threshold-4" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="780" max="100" display="period-threshold-std" height="33" min="0" direction="Horizontal" default="5.0" variable="period-threshold-std" units="%" width="345" sizeVersion="0"></slider>
+    <note x="25" y="815" backgroundDark="0" fontSize="8" width="345" markdown="true" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Minimum delay threshold at which an activity modification is requested is only reached if `w = 1`</note>
+    <slider x="25" step="1" y="830" max="20" display="min-delay-threshold" height="33" min="0" direction="Horizontal" default="20.0" variable="min-delay-threshold" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="0.05" y="865" max="1" display="mean-tolerance" height="33" min="0" direction="Horizontal" default="0.1" variable="mean-tolerance" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="1" y="165" max="4" display="max-n-activities" height="33" min="1" direction="Horizontal" default="2.0" variable="max-n-activities" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="210" max="480" display="max-activity-duration" height="33" min="0" direction="Horizontal" default="30.0" variable="max-activity-duration" units="min" width="345" sizeVersion="0"></slider>
+    <note x="25" y="195" backgroundDark="0" fontSize="8" width="345" markdown="true" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum time an agent spends at an activity (i.e., at a building)</note>
+    <note x="25" y="245" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum time spent after initialisation at home before the first trip
+(left for cars and right for pedestrians)</note>
+    <slider x="25" step="5" y="305" max="60" display="max-home-duration-cars" height="33" min="0" direction="Horizontal" default="60.0" variable="max-home-duration-cars" units="min" width="170" sizeVersion="0"></slider>
+    <note x="25" y="340" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum number of ticks that the vehicle moves earlier than it should to reach its next building destination</note>
+    <slider x="25" step="5" y="365" max="30" display="max-buffer-period" height="33" min="0" direction="Horizontal" default="10.0" variable="max-buffer-period" units="minutes" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="270" max="60" display="min-home-duration-cars" height="33" min="0" direction="Horizontal" default="30.0" variable="min-home-duration-cars" units="min" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="5" y="305" max="60" display="max-home-duration-pedestrians" height="33" min="0" direction="Horizontal" default="45.0" variable="max-home-duration-pedestrians" units="min" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="5" y="270" max="60" display="min-home-duration-pedestrians" height="33" min="0" direction="Horizontal" default="15.0" variable="min-home-duration-pedestrians" units="min" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="0.02" y="525" max="0.5" display="search-radius-increase-increment" height="33" min="0" direction="Horizontal" default="0.02" variable="search-radius-increase-increment" units="miles" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="0.02" y="490" max="0.5" display="public-transport-search-radius" height="33" min="0" direction="Horizontal" default="0.1" variable="public-transport-search-radius" units="miles" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="1" y="455" max="100" display="pedestrians-public-transport" height="33" min="0" direction="Horizontal" default="90.0" variable="pedestrians-public-transport" units="%" width="345" sizeVersion="0"></slider>
+    <switch x="25" y="400" height="40" on="true" variable="return-home?" width="345" display="return-home?"></switch>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="380" xMin="0.0" height="145" legend="true" xMax="10.0" yMin="0.0" width="290" display="Pedestrians public transport usage">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="0" display="On bus" color="-10899396" legend="true">
+        <setup></setup>
+        <update>plot count pedestrians with [on-bus? = true]</update>
+      </pen>
+      <pen interval="1.0" mode="0" display="Waiting" color="-2674135" legend="true">
+        <setup></setup>
+        <update>plot count pedestrians with [waiting? = true]</update>
+      </pen>
+    </plot>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="525" xMin="-200.0" height="120" legend="false" xMax="300.0" yMin="0.0" width="290" display="Delays histogram">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="1" display="default" color="-16777216" legend="true">
+        <setup></setup>
+        <update>histogram all-delays
+set-histogram-num-bars 100</update>
+      </pen>
+    </plot>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Vehicle" y="645" xMin="0.0" height="120" legend="false" xMax="10.0" yMin="0.0" width="290" xAxis="Time step" display="Number of activity modification requests">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="0" display="default" color="-16777216" legend="true">
+        <setup></setup>
+        <update>plot length modify-record</update>
+      </pen>
+    </plot>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="765" xMin="0.0" height="120" legend="false" xMax="5.0" yMin="0.0" width="290" display="Number of planned trips histogram">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="1" display="default" color="-16777216" legend="true">
+        <setup></setup>
+        <update>histogram n-trips-list
+</update>
+      </pen>
+    </plot>
+    <note x="25" y="440" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Public transport parameters</note>
+    <input x="380" multiline="false" y="755" height="60" variable="reference-road-id-1" type="number" width="130">159.0</input>
+    <input x="515" multiline="false" y="755" height="60" variable="reference-road-id-2" type="number" width="130">170.0</input>
+    <input x="380" multiline="false" y="820" height="60" variable="reference-road-miles" type="number" width="265">0.028465014</input>
+  </widgets>
+  <info># MATraM: Multiple-Activity Transport and Mobility agent-based model
+
+Overview
+--------
+
+This is a NetLogo model that simulates the movement of vehicles on a road network. The model includes three types of agents: nodes, buildings, and vehicles. Nodes represent intersections in the road network, buildings represent buildings in the environment, and vehicles move along the links between nodes. The model includes features such as speed limits, random maximum speeds for vehicles, and collision avoidance.
+
+Design Concepts
+--------------
+
+* **Spatial Extent:** The model is defined on a two-dimensional grid, with nodes, links, and buildings representing intersections, roads, and buildings, respectively.
+* **Temporal Extent:** The model operates in discrete time steps, or ticks. At each tick, cars and buses move along the links between nodes and update their speed based on local conditions. Pedestrians move without considering speed limits.
+* **Stochasticity:** The model includes randomness in the form of random maximum speeds for cars and buses and the selection of destinations.
+* **Collectives:** The model simulates the collective behavior of cars, buses and pedestrians moving on a road network.
+* **Observation:** The model includes a visualization of the road network, buildings, and the movement of cars, vehicles and pedestrians.
+
+Details
+-------
+
+### Entities, States, and Variables
+
+* **Nodes:** Nodes represent intersections in the road network. They have a position on the grid, a list of links connected to them, and a unique ID.
+* **Links:** Links represent roads between intersections. They have a distance to the destination, a speed limit, a color, a thickness, and a unique ID.
+* **Buildings:** Buildings represent physical structures in the environment. They have a position on the grid, a unique ID, and a type (e.g. residential, commercial, etc.).
+* **Cars:** Cars represent individual agents moving on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
+* **Buses:** Buses represent public transport agents moving on the road network. They have a position on the grid, a destination (stop point), a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, and a capacity for pedestrians.
+* **Pedestrians:** Pedestrians represent individual agents walking on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
+
+### Process Overview and Scheduling
+
+The model operates in two main procedures: `setup` and `go`. `Setup` initializes the nodes, buildings, and cars, buses and pedestrians and `go` advances the simulation by one tick. For a detailed description of the initialisation, input and the run submodels, refer to Yahya Gamal, Ricardo Colasanti, Gary Polhill, Tatsuya Mitomi, Esra Suel, Alison Heppenstall. MATraM: A multi-activity transport and mobility agent-based model for activity modifications. 2026.
+</info>
+  <turtleShapes>
+    <shape name="default" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="5"></point>
+        <point x="40" y="250"></point>
+        <point x="150" y="205"></point>
+        <point x="260" y="250"></point>
+      </polygon>
+    </shape>
+    <shape name="airplane" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="0"></point>
+        <point x="135" y="15"></point>
+        <point x="120" y="60"></point>
+        <point x="120" y="105"></point>
+        <point x="15" y="165"></point>
+        <point x="15" y="195"></point>
+        <point x="120" y="180"></point>
+        <point x="135" y="240"></point>
+        <point x="105" y="270"></point>
+        <point x="120" y="285"></point>
+        <point x="150" y="270"></point>
+        <point x="180" y="285"></point>
+        <point x="210" y="270"></point>
+        <point x="165" y="240"></point>
+        <point x="180" y="180"></point>
+        <point x="285" y="195"></point>
+        <point x="285" y="165"></point>
+        <point x="180" y="105"></point>
+        <point x="180" y="60"></point>
+        <point x="165" y="15"></point>
+      </polygon>
+    </shape>
+    <shape name="arrow" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="0"></point>
+        <point x="0" y="150"></point>
+        <point x="105" y="150"></point>
+        <point x="105" y="293"></point>
+        <point x="195" y="293"></point>
+        <point x="195" y="150"></point>
+        <point x="300" y="150"></point>
+      </polygon>
+    </shape>
+    <shape name="box" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="285"></point>
+        <point x="285" y="225"></point>
+        <point x="285" y="75"></point>
+        <point x="150" y="135"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="135"></point>
+        <point x="15" y="75"></point>
+        <point x="150" y="15"></point>
+        <point x="285" y="75"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="15" y="75"></point>
+        <point x="15" y="225"></point>
+        <point x="150" y="285"></point>
+        <point x="150" y="135"></point>
+      </polygon>
+      <line endX="150" startY="285" marked="false" color="255" endY="135" startX="150"></line>
+      <line endX="15" startY="135" marked="false" color="255" endY="75" startX="150"></line>
+      <line endX="285" startY="135" marked="false" color="255" endY="75" startX="150"></line>
+    </shape>
+    <shape name="bug" rotatable="true" editableColorIndex="0">
+      <circle x="96" y="182" marked="true" color="-1920102913" diameter="108" filled="true"></circle>
+      <circle x="110" y="127" marked="true" color="-1920102913" diameter="80" filled="true"></circle>
+      <circle x="110" y="75" marked="true" color="-1920102913" diameter="80" filled="true"></circle>
+      <line endX="80" startY="100" marked="true" color="-1920102913" endY="30" startX="150"></line>
+      <line endX="220" startY="100" marked="true" color="-1920102913" endY="30" startX="150"></line>
+    </shape>
+    <shape name="bus top" rotatable="true" editableColorIndex="0">
+      <rectangle endX="195" startY="60" marked="true" color="-1920102913" endY="270" startX="105" filled="true"></rectangle>
+      <rectangle endX="105" startY="60" marked="true" color="-1920102913" endY="75" startX="90" filled="true"></rectangle>
+      <rectangle endX="210" startY="60" marked="true" color="-1920102913" endY="75" startX="195" filled="true"></rectangle>
+      <circle x="105" y="30" marked="true" color="-1920102913" diameter="60" filled="true"></circle>
+      <circle x="165" y="255" marked="true" color="-1920102913" diameter="30" filled="true"></circle>
+      <circle x="105" y="255" marked="true" color="-1920102913" diameter="30" filled="true"></circle>
+      <rectangle endX="180" startY="255" marked="true" color="-1920102913" endY="285" startX="120" filled="true"></rectangle>
+      <circle x="135" y="30" marked="true" color="-1920102913" diameter="60" filled="true"></circle>
+      <rectangle endX="165" startY="30" marked="true" color="-1920102913" endY="60" startX="135" filled="true"></rectangle>
+    </shape>
+    <shape name="butterfly" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="165"></point>
+        <point x="209" y="199"></point>
+        <point x="225" y="225"></point>
+        <point x="225" y="255"></point>
+        <point x="195" y="270"></point>
+        <point x="165" y="255"></point>
+        <point x="150" y="240"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="165"></point>
+        <point x="89" y="198"></point>
+        <point x="75" y="225"></point>
+        <point x="75" y="255"></point>
+        <point x="105" y="270"></point>
+        <point x="135" y="255"></point>
+        <point x="150" y="240"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="139" y="148"></point>
+        <point x="100" y="105"></point>
+        <point x="55" y="90"></point>
+        <point x="25" y="90"></point>
+        <point x="10" y="105"></point>
+        <point x="10" y="135"></point>
+        <point x="25" y="180"></point>
+        <point x="40" y="195"></point>
+        <point x="85" y="194"></point>
+        <point x="139" y="163"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="162" y="150"></point>
+        <point x="200" y="105"></point>
+        <point x="245" y="90"></point>
+        <point x="275" y="90"></point>
+        <point x="290" y="105"></point>
+        <point x="290" y="135"></point>
+        <point x="275" y="180"></point>
+        <point x="260" y="195"></point>
+        <point x="215" y="195"></point>
+        <point x="162" y="165"></point>
+      </polygon>
+      <polygon color="255" filled="true" marked="false">
+        <point x="150" y="255"></point>
+        <point x="135" y="225"></point>
+        <point x="120" y="150"></point>
+        <point x="135" y="120"></point>
+        <point x="150" y="105"></point>
+        <point x="165" y="120"></point>
+        <point x="180" y="150"></point>
+        <point x="165" y="225"></point>
+      </polygon>
+      <circle x="135" y="90" marked="false" color="255" diameter="30" filled="true"></circle>
+      <line endX="195" startY="105" marked="false" color="255" endY="60" startX="150"></line>
+      <line endX="105" startY="105" marked="false" color="255" endY="60" startX="150"></line>
+    </shape>
+    <shape name="car" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="300" y="180"></point>
+        <point x="279" y="164"></point>
+        <point x="261" y="144"></point>
+        <point x="240" y="135"></point>
+        <point x="226" y="132"></point>
+        <point x="213" y="106"></point>
+        <point x="203" y="84"></point>
+        <point x="185" y="63"></point>
+        <point x="159" y="50"></point>
+        <point x="135" y="50"></point>
+        <point x="75" y="60"></point>
+        <point x="0" y="150"></point>
+        <point x="0" y="165"></point>
+        <point x="0" y="225"></point>
+        <point x="300" y="225"></point>
+        <point x="300" y="180"></point>
+      </polygon>
+      <circle x="180" y="180" marked="false" color="255" diameter="90" filled="true"></circle>
+      <circle x="30" y="180" marked="false" color="255" diameter="90" filled="true"></circle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="162" y="80"></point>
+        <point x="132" y="78"></point>
+        <point x="134" y="135"></point>
+        <point x="209" y="135"></point>
+        <point x="194" y="105"></point>
+        <point x="189" y="96"></point>
+        <point x="180" y="89"></point>
+      </polygon>
+      <circle x="47" y="195" marked="true" color="-1920102913" diameter="58" filled="true"></circle>
+      <circle x="195" y="195" marked="true" color="-1920102913" diameter="58" filled="true"></circle>
+    </shape>
+    <shape name="circle" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+    </shape>
+    <shape name="circle 2" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+      <circle x="30" y="30" marked="false" color="255" diameter="240" filled="true"></circle>
+    </shape>
+    <shape name="cow" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="200" y="193"></point>
+        <point x="197" y="249"></point>
+        <point x="179" y="249"></point>
+        <point x="177" y="196"></point>
+        <point x="166" y="187"></point>
+        <point x="140" y="189"></point>
+        <point x="93" y="191"></point>
+        <point x="78" y="179"></point>
+        <point x="72" y="211"></point>
+        <point x="49" y="209"></point>
+        <point x="48" y="181"></point>
+        <point x="37" y="149"></point>
+        <point x="25" y="120"></point>
+        <point x="25" y="89"></point>
+        <point x="45" y="72"></point>
+        <point x="103" y="84"></point>
+        <point x="179" y="75"></point>
+        <point x="198" y="76"></point>
+        <point x="252" y="64"></point>
+        <point x="272" y="81"></point>
+        <point x="293" y="103"></point>
+        <point x="285" y="121"></point>
+        <point x="255" y="121"></point>
+        <point x="242" y="118"></point>
+        <point x="224" y="167"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="73" y="210"></point>
+        <point x="86" y="251"></point>
+        <point x="62" y="249"></point>
+        <point x="48" y="208"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="25" y="114"></point>
+        <point x="16" y="195"></point>
+        <point x="9" y="204"></point>
+        <point x="23" y="213"></point>
+        <point x="25" y="200"></point>
+        <point x="39" y="123"></point>
+      </polygon>
+    </shape>
+    <shape name="cylinder" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+    </shape>
+    <shape name="dot" rotatable="false" editableColorIndex="0">
+      <circle x="90" y="90" marked="true" color="-1920102913" diameter="120" filled="true"></circle>
+    </shape>
+    <shape name="face happy" rotatable="false" editableColorIndex="0">
+      <circle x="8" y="8" marked="true" color="-1920102913" diameter="285" filled="true"></circle>
+      <circle x="60" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <circle x="180" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="150" y="255"></point>
+        <point x="90" y="239"></point>
+        <point x="62" y="213"></point>
+        <point x="47" y="191"></point>
+        <point x="67" y="179"></point>
+        <point x="90" y="203"></point>
+        <point x="109" y="218"></point>
+        <point x="150" y="225"></point>
+        <point x="192" y="218"></point>
+        <point x="210" y="203"></point>
+        <point x="227" y="181"></point>
+        <point x="251" y="194"></point>
+        <point x="236" y="217"></point>
+        <point x="212" y="240"></point>
+      </polygon>
+    </shape>
+    <shape name="face neutral" rotatable="false" editableColorIndex="0">
+      <circle x="8" y="7" marked="true" color="-1920102913" diameter="285" filled="true"></circle>
+      <circle x="60" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <circle x="180" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <rectangle endX="240" startY="195" marked="false" color="255" endY="225" startX="60" filled="true"></rectangle>
+    </shape>
+    <shape name="face sad" rotatable="false" editableColorIndex="0">
+      <circle x="8" y="8" marked="true" color="-1920102913" diameter="285" filled="true"></circle>
+      <circle x="60" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <circle x="180" y="75" marked="false" color="255" diameter="60" filled="true"></circle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="150" y="168"></point>
+        <point x="90" y="184"></point>
+        <point x="62" y="210"></point>
+        <point x="47" y="232"></point>
+        <point x="67" y="244"></point>
+        <point x="90" y="220"></point>
+        <point x="109" y="205"></point>
+        <point x="150" y="198"></point>
+        <point x="192" y="205"></point>
+        <point x="210" y="220"></point>
+        <point x="227" y="242"></point>
+        <point x="251" y="229"></point>
+        <point x="236" y="206"></point>
+        <point x="212" y="183"></point>
+      </polygon>
+    </shape>
+    <shape name="fish" rotatable="false" editableColorIndex="0">
+      <polygon color="-1" filled="true" marked="false">
+        <point x="44" y="131"></point>
+        <point x="21" y="87"></point>
+        <point x="15" y="86"></point>
+        <point x="0" y="120"></point>
+        <point x="15" y="150"></point>
+        <point x="0" y="180"></point>
+        <point x="13" y="214"></point>
+        <point x="20" y="212"></point>
+        <point x="45" y="166"></point>
+      </polygon>
+      <polygon color="-1" filled="true" marked="false">
+        <point x="135" y="195"></point>
+        <point x="119" y="235"></point>
+        <point x="95" y="218"></point>
+        <point x="76" y="210"></point>
+        <point x="46" y="204"></point>
+        <point x="60" y="165"></point>
+      </polygon>
+      <polygon color="-1" filled="true" marked="false">
+        <point x="75" y="45"></point>
+        <point x="83" y="77"></point>
+        <point x="71" y="103"></point>
+        <point x="86" y="114"></point>
+        <point x="166" y="78"></point>
+        <point x="135" y="60"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="30" y="136"></point>
+        <point x="151" y="77"></point>
+        <point x="226" y="81"></point>
+        <point x="280" y="119"></point>
+        <point x="292" y="146"></point>
+        <point x="292" y="160"></point>
+        <point x="287" y="170"></point>
+        <point x="270" y="195"></point>
+        <point x="195" y="210"></point>
+        <point x="151" y="212"></point>
+        <point x="30" y="166"></point>
+      </polygon>
+      <circle x="215" y="106" marked="false" color="255" diameter="30" filled="true"></circle>
+    </shape>
+    <shape name="flag" rotatable="false" editableColorIndex="0">
+      <rectangle endX="75" startY="15" marked="true" color="-1920102913" endY="300" startX="60" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="90" y="150"></point>
+        <point x="270" y="90"></point>
+        <point x="90" y="30"></point>
+      </polygon>
+      <line endX="90" startY="135" marked="true" color="-1920102913" endY="135" startX="75"></line>
+      <line endX="90" startY="45" marked="true" color="-1920102913" endY="45" startX="75"></line>
+    </shape>
+    <shape name="flower" rotatable="false" editableColorIndex="0">
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="135" y="120"></point>
+        <point x="165" y="165"></point>
+        <point x="180" y="210"></point>
+        <point x="180" y="240"></point>
+        <point x="150" y="300"></point>
+        <point x="165" y="300"></point>
+        <point x="195" y="240"></point>
+        <point x="195" y="195"></point>
+        <point x="165" y="135"></point>
+      </polygon>
+      <circle x="85" y="132" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="130" y="147" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="192" y="85" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="85" y="40" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="177" y="40" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="177" y="132" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="70" y="85" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="130" y="25" marked="true" color="-1920102913" diameter="38" filled="true"></circle>
+      <circle x="96" y="51" marked="true" color="-1920102913" diameter="108" filled="true"></circle>
+      <circle x="113" y="68" marked="false" color="255" diameter="74" filled="true"></circle>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="189" y="233"></point>
+        <point x="219" y="188"></point>
+        <point x="249" y="173"></point>
+        <point x="279" y="188"></point>
+        <point x="234" y="218"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="180" y="255"></point>
+        <point x="150" y="210"></point>
+        <point x="105" y="210"></point>
+        <point x="75" y="240"></point>
+        <point x="135" y="240"></point>
+      </polygon>
+    </shape>
+    <shape name="house" rotatable="false" editableColorIndex="0">
+      <rectangle endX="255" startY="120" marked="true" color="-1920102913" endY="285" startX="45" filled="true"></rectangle>
+      <rectangle endX="180" startY="210" marked="false" color="255" endY="285" startX="120" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="15" y="120"></point>
+        <point x="150" y="15"></point>
+        <point x="285" y="120"></point>
+      </polygon>
+      <line endX="270" startY="120" marked="false" color="255" endY="120" startX="30"></line>
+    </shape>
+    <shape name="leaf" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="210"></point>
+        <point x="135" y="195"></point>
+        <point x="120" y="210"></point>
+        <point x="60" y="210"></point>
+        <point x="30" y="195"></point>
+        <point x="60" y="180"></point>
+        <point x="60" y="165"></point>
+        <point x="15" y="135"></point>
+        <point x="30" y="120"></point>
+        <point x="15" y="105"></point>
+        <point x="40" y="104"></point>
+        <point x="45" y="90"></point>
+        <point x="60" y="90"></point>
+        <point x="90" y="105"></point>
+        <point x="105" y="120"></point>
+        <point x="120" y="120"></point>
+        <point x="105" y="60"></point>
+        <point x="120" y="60"></point>
+        <point x="135" y="30"></point>
+        <point x="150" y="15"></point>
+        <point x="165" y="30"></point>
+        <point x="180" y="60"></point>
+        <point x="195" y="60"></point>
+        <point x="180" y="120"></point>
+        <point x="195" y="120"></point>
+        <point x="210" y="105"></point>
+        <point x="240" y="90"></point>
+        <point x="255" y="90"></point>
+        <point x="263" y="104"></point>
+        <point x="285" y="105"></point>
+        <point x="270" y="120"></point>
+        <point x="285" y="135"></point>
+        <point x="240" y="165"></point>
+        <point x="240" y="180"></point>
+        <point x="270" y="195"></point>
+        <point x="240" y="210"></point>
+        <point x="180" y="210"></point>
+        <point x="165" y="195"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="195"></point>
+        <point x="135" y="240"></point>
+        <point x="120" y="255"></point>
+        <point x="105" y="255"></point>
+        <point x="105" y="285"></point>
+        <point x="135" y="285"></point>
+        <point x="165" y="240"></point>
+        <point x="165" y="195"></point>
+      </polygon>
+    </shape>
+    <shape name="line" rotatable="true" editableColorIndex="0">
+      <line endX="150" startY="0" marked="true" color="-1920102913" endY="300" startX="150"></line>
+    </shape>
+    <shape name="line half" rotatable="true" editableColorIndex="0">
+      <line endX="150" startY="0" marked="true" color="-1920102913" endY="150" startX="150"></line>
+    </shape>
+    <shape name="pentagon" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="15"></point>
+        <point x="15" y="120"></point>
+        <point x="60" y="285"></point>
+        <point x="240" y="285"></point>
+        <point x="285" y="120"></point>
+      </polygon>
+    </shape>
+    <shape name="person" rotatable="false" editableColorIndex="0">
+      <circle x="110" y="5" marked="true" color="-1920102913" diameter="80" filled="true"></circle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="105" y="90"></point>
+        <point x="120" y="195"></point>
+        <point x="90" y="285"></point>
+        <point x="105" y="300"></point>
+        <point x="135" y="300"></point>
+        <point x="150" y="225"></point>
+        <point x="165" y="300"></point>
+        <point x="195" y="300"></point>
+        <point x="210" y="285"></point>
+        <point x="180" y="195"></point>
+        <point x="195" y="90"></point>
+      </polygon>
+      <rectangle endX="172" startY="79" marked="true" color="-1920102913" endY="94" startX="127" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="195" y="90"></point>
+        <point x="240" y="150"></point>
+        <point x="225" y="180"></point>
+        <point x="165" y="105"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="105" y="90"></point>
+        <point x="60" y="150"></point>
+        <point x="75" y="180"></point>
+        <point x="135" y="105"></point>
+      </polygon>
+    </shape>
+    <shape name="plant" rotatable="false" editableColorIndex="0">
+      <rectangle endX="165" startY="90" marked="true" color="-1920102913" endY="300" startX="135" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="255"></point>
+        <point x="90" y="210"></point>
+        <point x="45" y="195"></point>
+        <point x="75" y="255"></point>
+        <point x="135" y="285"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="165" y="255"></point>
+        <point x="210" y="210"></point>
+        <point x="255" y="195"></point>
+        <point x="225" y="255"></point>
+        <point x="165" y="285"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="180"></point>
+        <point x="90" y="135"></point>
+        <point x="45" y="120"></point>
+        <point x="75" y="180"></point>
+        <point x="135" y="210"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="165" y="180"></point>
+        <point x="165" y="210"></point>
+        <point x="225" y="180"></point>
+        <point x="255" y="120"></point>
+        <point x="210" y="135"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="105"></point>
+        <point x="90" y="60"></point>
+        <point x="45" y="45"></point>
+        <point x="75" y="105"></point>
+        <point x="135" y="135"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="165" y="105"></point>
+        <point x="165" y="135"></point>
+        <point x="225" y="105"></point>
+        <point x="255" y="45"></point>
+        <point x="210" y="60"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="135" y="90"></point>
+        <point x="120" y="45"></point>
+        <point x="150" y="15"></point>
+        <point x="180" y="45"></point>
+        <point x="165" y="90"></point>
+      </polygon>
+    </shape>
+    <shape name="square" rotatable="false" editableColorIndex="0">
+      <rectangle endX="270" startY="30" marked="true" color="-1920102913" endY="270" startX="30" filled="true"></rectangle>
+    </shape>
+    <shape name="square 2" rotatable="false" editableColorIndex="0">
+      <rectangle endX="270" startY="30" marked="true" color="-1920102913" endY="270" startX="30" filled="true"></rectangle>
+      <rectangle endX="240" startY="60" marked="false" color="255" endY="240" startX="60" filled="true"></rectangle>
+    </shape>
+    <shape name="star" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="151" y="1"></point>
+        <point x="185" y="108"></point>
+        <point x="298" y="108"></point>
+        <point x="207" y="175"></point>
+        <point x="242" y="282"></point>
+        <point x="151" y="216"></point>
+        <point x="59" y="282"></point>
+        <point x="94" y="175"></point>
+        <point x="3" y="108"></point>
+        <point x="116" y="108"></point>
+      </polygon>
+    </shape>
+    <shape name="target" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+      <circle x="30" y="30" marked="false" color="255" diameter="240" filled="true"></circle>
+      <circle x="60" y="60" marked="true" color="-1920102913" diameter="180" filled="true"></circle>
+      <circle x="90" y="90" marked="false" color="255" diameter="120" filled="true"></circle>
+      <circle x="120" y="120" marked="true" color="-1920102913" diameter="60" filled="true"></circle>
+    </shape>
+    <shape name="tree" rotatable="false" editableColorIndex="0">
+      <circle x="118" y="3" marked="true" color="-1920102913" diameter="94" filled="true"></circle>
+      <rectangle endX="180" startY="195" marked="false" color="-1653716737" endY="300" startX="120" filled="true"></rectangle>
+      <circle x="65" y="21" marked="true" color="-1920102913" diameter="108" filled="true"></circle>
+      <circle x="116" y="41" marked="true" color="-1920102913" diameter="127" filled="true"></circle>
+      <circle x="45" y="90" marked="true" color="-1920102913" diameter="120" filled="true"></circle>
+      <circle x="104" y="74" marked="true" color="-1920102913" diameter="152" filled="true"></circle>
+    </shape>
+    <shape name="triangle" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="30"></point>
+        <point x="15" y="255"></point>
+        <point x="285" y="255"></point>
+      </polygon>
+    </shape>
+    <shape name="triangle 2" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="30"></point>
+        <point x="15" y="255"></point>
+        <point x="285" y="255"></point>
+      </polygon>
+      <polygon color="255" filled="true" marked="false">
+        <point x="151" y="99"></point>
+        <point x="225" y="223"></point>
+        <point x="75" y="224"></point>
+      </polygon>
+    </shape>
+    <shape name="truck" rotatable="false" editableColorIndex="0">
+      <rectangle endX="195" startY="45" marked="true" color="-1920102913" endY="187" startX="4" filled="true"></rectangle>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="296" y="193"></point>
+        <point x="296" y="150"></point>
+        <point x="259" y="134"></point>
+        <point x="244" y="104"></point>
+        <point x="208" y="104"></point>
+        <point x="207" y="194"></point>
+      </polygon>
+      <rectangle endX="195" startY="60" marked="false" color="-1" endY="105" startX="195" filled="true"></rectangle>
+      <polygon color="255" filled="true" marked="false">
+        <point x="238" y="112"></point>
+        <point x="252" y="141"></point>
+        <point x="219" y="141"></point>
+        <point x="218" y="112"></point>
+      </polygon>
+      <circle x="234" y="174" marked="false" color="255" diameter="42" filled="true"></circle>
+      <rectangle endX="214" startY="185" marked="true" color="-1920102913" endY="194" startX="181" filled="true"></rectangle>
+      <circle x="144" y="174" marked="false" color="255" diameter="42" filled="true"></circle>
+      <circle x="24" y="174" marked="false" color="255" diameter="42" filled="true"></circle>
+      <circle x="24" y="174" marked="true" color="-1920102913" diameter="42" filled="false"></circle>
+      <circle x="144" y="174" marked="true" color="-1920102913" diameter="42" filled="false"></circle>
+      <circle x="234" y="174" marked="true" color="-1920102913" diameter="42" filled="false"></circle>
+    </shape>
+    <shape name="turtle" rotatable="true" editableColorIndex="0">
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="215" y="204"></point>
+        <point x="240" y="233"></point>
+        <point x="246" y="254"></point>
+        <point x="228" y="266"></point>
+        <point x="215" y="252"></point>
+        <point x="193" y="210"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="195" y="90"></point>
+        <point x="225" y="75"></point>
+        <point x="245" y="75"></point>
+        <point x="260" y="89"></point>
+        <point x="269" y="108"></point>
+        <point x="261" y="124"></point>
+        <point x="240" y="105"></point>
+        <point x="225" y="105"></point>
+        <point x="210" y="105"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="105" y="90"></point>
+        <point x="75" y="75"></point>
+        <point x="55" y="75"></point>
+        <point x="40" y="89"></point>
+        <point x="31" y="108"></point>
+        <point x="39" y="124"></point>
+        <point x="60" y="105"></point>
+        <point x="75" y="105"></point>
+        <point x="90" y="105"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="132" y="85"></point>
+        <point x="134" y="64"></point>
+        <point x="107" y="51"></point>
+        <point x="108" y="17"></point>
+        <point x="150" y="2"></point>
+        <point x="192" y="18"></point>
+        <point x="192" y="52"></point>
+        <point x="169" y="65"></point>
+        <point x="172" y="87"></point>
+      </polygon>
+      <polygon color="1504722175" filled="true" marked="false">
+        <point x="85" y="204"></point>
+        <point x="60" y="233"></point>
+        <point x="54" y="254"></point>
+        <point x="72" y="266"></point>
+        <point x="85" y="252"></point>
+        <point x="107" y="210"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="119" y="75"></point>
+        <point x="179" y="75"></point>
+        <point x="209" y="101"></point>
+        <point x="224" y="135"></point>
+        <point x="220" y="225"></point>
+        <point x="175" y="261"></point>
+        <point x="128" y="261"></point>
+        <point x="81" y="224"></point>
+        <point x="74" y="135"></point>
+        <point x="88" y="99"></point>
+      </polygon>
+    </shape>
+    <shape name="wheel" rotatable="false" editableColorIndex="0">
+      <circle x="3" y="3" marked="true" color="-1920102913" diameter="294" filled="true"></circle>
+      <circle x="30" y="30" marked="false" color="255" diameter="240" filled="true"></circle>
+      <line endX="150" startY="285" marked="true" color="-1920102913" endY="15" startX="150"></line>
+      <line endX="285" startY="150" marked="true" color="-1920102913" endY="150" startX="15"></line>
+      <circle x="120" y="120" marked="true" color="-1920102913" diameter="60" filled="true"></circle>
+      <line endX="79" startY="40" marked="true" color="-1920102913" endY="269" startX="216"></line>
+      <line endX="269" startY="84" marked="true" color="-1920102913" endY="221" startX="40"></line>
+      <line endX="269" startY="216" marked="true" color="-1920102913" endY="79" startX="40"></line>
+      <line endX="221" startY="40" marked="true" color="-1920102913" endY="269" startX="84"></line>
+    </shape>
+    <shape name="x" rotatable="false" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="270" y="75"></point>
+        <point x="225" y="30"></point>
+        <point x="30" y="225"></point>
+        <point x="75" y="270"></point>
+      </polygon>
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="30" y="75"></point>
+        <point x="75" y="30"></point>
+        <point x="270" y="225"></point>
+        <point x="225" y="270"></point>
+      </polygon>
+    </shape>
+  </turtleShapes>
+  <linkShapes>
+    <shape name="default" curviness="0.0">
+      <lines>
+        <line x="-0.2" visible="false">
+          <dash value="0.0"></dash>
+          <dash value="1.0"></dash>
+        </line>
+        <line x="0.0" visible="true">
+          <dash value="1.0"></dash>
+          <dash value="0.0"></dash>
+        </line>
+        <line x="0.2" visible="false">
+          <dash value="0.0"></dash>
+          <dash value="1.0"></dash>
+        </line>
+      </lines>
+      <indicator>
+        <shape name="link direction" rotatable="true" editableColorIndex="0">
+          <line endX="90" startY="150" marked="true" color="-1920102913" endY="180" startX="150"></line>
+          <line endX="210" startY="150" marked="true" color="-1920102913" endY="180" startX="150"></line>
+        </shape>
+      </indicator>
+    </shape>
+  </linkShapes>
+  <previewCommands>random-seed 2
+setup</previewCommands>
+  <experiments>
+    <experiment name="250327 OAT SA" repetitions="100" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>times</metric>
+        <metric>count vehicles with [modify? = true]</metric>
+        <metric>count vehicles with [modify? = true] / count vehicles</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="number_of_vehicles" first="100" step="100" last="500"></steppedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="slowest-vehicle" first="0.1" step="0.1" last="0.5"></steppedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="250327 OAT SA (dummy data)" repetitions="4" sequentialRunOrder="true" runMetricsEveryStep="false">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>times</metric>
+        <metric>count vehicles with [modify? = true]</metric>
+        <metric>(count vehicles with [modify? = true] / count vehicles) * 100</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="number_of_vehicles" first="100" step="100" last="500"></steppedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="slowest-vehicle" first="0.1" step="0.1" last="0.5"></steppedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="250327 baseline" repetitions="100" sequentialRunOrder="true" runMetricsEveryStep="false">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>times</metric>
+        <metric>count vehicles with [modify? = true]</metric>
+        <metric>(count vehicles with [modify? = true] / count vehicles) * 100</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="number_of_vehicles">
+          <value value="300"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-vehicle">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="250604 Sensitivity" repetitions="100" sequentialRunOrder="true" runMetricsEveryStep="false">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>times</metric>
+        <metric>count vehicles with [modify? = true]</metric>
+        <metric>(count vehicles with [modify? = true] / count vehicles) * 100</metric>
+        <metric>activity-record</metric>
+        <metric>weight-record</metric>
+        <metric>time-record</metric>
+        <metric>threshold-record</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="control-seed?">
+          <value value="false"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="current-seed">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="mean-tolerance">
+          <value value="10"></value>
+          <value value="20"></value>
+          <value value="30"></value>
+          <value value="40"></value>
+          <value value="50"></value>
+          <value value="60"></value>
+          <value value="70"></value>
+          <value value="80"></value>
+          <value value="90"></value>
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="number_of_vehicles">
+          <value value="300"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-vehicle">
+          <value value="0.4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w1">
+          <value value="0.4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w2">
+          <value value="0.3"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w3">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w4">
+          <value value="0.1"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w-std">
+          <value value="0.02"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="250604 Baseline" repetitions="100" sequentialRunOrder="true" runMetricsEveryStep="false">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>times</metric>
+        <metric>count vehicles with [modify? = true]</metric>
+        <metric>(count vehicles with [modify? = true] / count vehicles) * 100</metric>
+        <metric>activity-record</metric>
+        <metric>weight-record</metric>
+        <metric>time-record</metric>
+        <metric>threshold-record</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="control-seed?">
+          <value value="false"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="current-seed">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="mean-tolerance">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="number_of_vehicles">
+          <value value="300"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-vehicle">
+          <value value="0.4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w1">
+          <value value="0.4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w2">
+          <value value="0.3"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w3">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w4">
+          <value value="0.1"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w-std">
+          <value value="0.02"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="250616 Sensitivty" repetitions="100" sequentialRunOrder="true" runMetricsEveryStep="false">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>all-delays</metric>
+        <metric>all-periods</metric>
+        <metric>count vehicles with [modify? = true]</metric>
+        <metric>(count vehicles with [modify? = true] / count vehicles) * 100</metric>
+        <metric>activity-record</metric>
+        <metric>weight-record</metric>
+        <metric>delay-record</metric>
+        <metric>threshold-record</metric>
+        <metric>period-record</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="control-seed?">
+          <value value="false"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="current-seed">
+          <value value="0"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-activity-duration">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-buffer-period">
+          <value value="40"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="mean-tolerance" first="0.1" step="0.1" last="1"></steppedValueSet>
+        <enumeratedValueSet variable="min-delay-threshold">
+          <value value="25"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="number_of_vehicles">
+          <value value="100"></value>
+          <value value="300"></value>
+          <value value="500"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-vehicle">
+          <value value="0.4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w1">
+          <value value="0.4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w2">
+          <value value="0.3"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w3">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w4">
+          <value value="0.1"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="w-std">
+          <value value="0.02"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="260218_Scale" repetitions="10" sequentialRunOrder="true" runMetricsEveryStep="false">
+      <setup>setup</setup>
+      <go>go</go>
+      <exitCondition><![CDATA[ticks >= 18000]]></exitCondition>
+      <runMetricsCondition>ticks = 18000</runMetricsCondition>
+      <metrics>
+        <metric>all-delays</metric>
+        <metric>all-periods</metric>
+        <metric>count cars with [modify? = true]</metric>
+        <metric>ifelse-value (any? cars) [(count cars with [modify? = true] / count cars) * 100] [0]</metric>
+        <metric>activity-record</metric>
+        <metric>weight-record</metric>
+        <metric>delay-record</metric>
+        <metric>threshold-record</metric>
+        <metric>period-record</metric>
+        <metric>current-seed</metric>
+        <metric>timer</metric>
+      </metrics>
+      <constants>
+        <steppedValueSet variable="number-of-cars" first="0" step="500" last="10000"></steppedValueSet>
+        <steppedValueSet variable="number-of-pedestrians" first="0" step="500" last="10000"></steppedValueSet>
+        <enumeratedValueSet variable="control-seed?">
+          <value value="false"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="current-seed">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="fastest-bus">
+          <value value="40"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="fastest-car">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="fastest-pedestrian">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-activity-duration">
+          <value value="30"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-buffer-period">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-home-duration-cars">
+          <value value="60"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-home-duration-pedestrians">
+          <value value="45"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="mean-tolerance">
+          <value value="0.1"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="min-delay-threshold">
+          <value value="20"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="min-home-duration-cars">
+          <value value="30"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="min-home-duration-pedestrians">
+          <value value="15"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="pedestrians-public-transport">
+          <value value="90"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-1">
+          <value value="105"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-2">
+          <value value="110"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-3">
+          <value value="150"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-4">
+          <value value="200"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-std">
+          <value value="5"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="public-transport-search-radius">
+          <value value="0.1"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="search-radius-increase-increment">
+          <value value="0.02"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-bus">
+          <value value="20"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-car">
+          <value value="40"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-pedestrian">
+          <value value="2.5"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="threshold-input-type">
+          <value value="&quot;Controlled&quot;"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="tick-time-scale">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+      </constants>
+    </experiment>
+  </experiments>
+</model>

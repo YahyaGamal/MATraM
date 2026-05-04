@@ -1,0 +1,400 @@
+breed [buses bus]
+breed [templates template]
+
+buses-own [
+  service             ; The number of the bus service
+  location            ; Current location of the vehicle (origin node on current link)
+  destination         ; Destination of the vehicle (destination node on current link)
+  location-time       ; Time step at which the vehicle was at the loaction
+  destination-time    ; Time step at which the vehicle reached the destination
+  top-speed           ; Maximum speed of the vehicle
+  speed               ; Current speed of the vehicle
+  speed-restriction   ; Local speed restriction
+  progress            ; Total distance of the current progress on a road (total distance from origin to reach the destination)
+  remaining-progress  ; Remaining distance of the current progress on a road (remaining distance from origin to reach the destination)
+  trip                ; the path to next stoppoint destination is a list of roads
+  active?             ; if vehicle has not finished all its required trips (reached all its stop points
+  at-sp?              ; whether the vehicle is at a stop-point or not
+  my-home             ; home of vehicle
+  sp-destinations     ; the list of all the node destinations (in order)
+  remaining-sp-destinations ; the list of the remaining sp-destination
+  sp-destination      ; the destination building for the vehicle
+  i-destination       ; the index of the destination stop point in the sp-destinations
+  target-times        ; the target time steps to reach each destination
+  times               ; the time steps at which the vehicle reached its destinations
+  delays              ; the delay periods (comparing times to target-times)
+  target-periods      ; the target periods to make the trips (based on actually incurred bus data)
+  expected-periods    ; the expected time steps to be taken to reach the destinations
+  periods             ; the list of the periods taken to reach each b-destination
+  max-capacity        ; the maximum capacity of the bus
+  capacity            ; the current capacity of the bus (number of passengers)
+  initial-step?       ; whether the vehicle is at the initial trip from home or not
+]
+
+templates-own [
+  service             ; The number of the bus service
+  location            ; Current location of the vehicle (origin node on current link)
+  active?             ; if vehicle has not finished all its required trips (reached all its stop points)
+  at-sp?              ; whether the vehicle is at a stop-point or not
+  sp-destinations     ; the list of all the node destinations (in order)
+  remaining-sp-destinations ; the list of the remaining sp-destination
+  sp-destination            ; the destination building for the vehicle
+  i-destination             ; the index of the destination stop point in the sp-destinations
+  target-periods            ; the expected time steps to be taken to reach the destinations
+  frequency                 ; the frequency of the bus in ticks
+  max-capacity              ; the maximum capacity of the bus
+]
+
+
+to load-buses
+  ;; Load the node list from a CSV file
+  let csv-data csv:from-file "Data/trips_list.csv"
+
+  ;; Separate the header row from the data rows
+  let header-row first csv-data
+  let data-rows butfirst csv-data
+
+  ;; Loop through the data rows and create nodes
+  foreach data-rows [
+    row ->
+    ;; item 0 row is service
+    ;; item 1 row is sp-id
+    ;; item 2 row is time
+    ;; item 3 row is frequency
+    ;; item 4 row is start
+    ; if the entry is at a start point
+    ifelse item 4 row = 1 [
+      create-templates 1 [
+        set service item 0 row
+        set location one-of nodes with [sp-id = item 1 row]
+        set active? false
+        set at-sp? true
+        set sp-destinations (list one-of nodes with [sp-id = item 1 row])
+        set remaining-sp-destinations sp-destinations
+        set sp-destination nobody
+        set i-destination 1
+        set target-periods (list minutes-to-ticks item 2 row)
+        set frequency minutes-to-ticks item 3 row
+        set max-capacity 60
+        move-to location
+        set shape "bus top"
+        set size 4
+        set color red
+        hide-turtle
+      ]
+    ]
+    ; if the entry is not at a start point, then the bus template has been created and can be addressed
+    [
+      ask templates with [service = item 0 row] [
+        ;; add the next sp-destination, and ptrack origin and destination
+        let o last sp-destinations
+        set sp-destinations lput (one-of nodes with [sp-id = item 1 row]) sp-destinations
+        set remaining-sp-destinations sp-destinations
+        let d last sp-destinations
+        ;; find the trip and update the road networks to have buses? = true
+        let trip-temp nobody
+        ask o [set trip-temp nw:weighted-path-to d distance_to_destination]
+        foreach trip-temp [t -> ask t [set buses? true]]
+        set target-periods lput (minutes-to-ticks item 2 row) target-periods
+        if sp-destination = nobody [
+          set sp-destination one-of nodes with [sp-id = (item 1 row)]
+          face one-of nodes with [sp-id = item 1 row]
+        ]
+      ]
+    ]
+  ]
+end
+
+;; create the buses that should start from their first stop point
+to buses-start-SPs
+  ask nodes with [sp-id >= 0 and member? true buses-start and member? 0 buses-period] [
+    let i-bus 0
+    foreach buses-id [
+      bus-id ->
+      let t item i-bus buses-period
+      if t = 0 and item i-bus buses-start = true [
+        let next-period [frequency] of one-of templates with [service = bus-id]
+        set buses-period replace-item i-bus buses-period next-period
+        ask templates with [service = bus-id] [
+          hatch-buses 1 [
+            show-turtle
+            set color green
+            set shape "bus top"
+            set size 4
+            set label capacity
+            set label-color black
+            set initial-step? true
+            set top-speed (( random-float ( fastest-bus - slowest-bus ) ) + ( 1.0 * slowest-bus )) * (tick-time-scale / 3600); Set random maximum speed
+            set speed top-speed                  ; Set initial speed to maximum speed
+            set periods (list)
+            set expected-periods (list)
+            set times (list)
+            set delays (list)
+            set active? false
+            ;; set the target times and expected periods to reach b-destinations
+            set target-times (list)
+            let p-accumilated ticks
+            foreach sp-destinations [ 
+              sp -> 
+              let i-sp position sp sp-destinations
+              ;; expected periods
+              let expected-period report-expected-period sp
+              set expected-periods lput expected-period expected-periods
+              ;; target times
+              let p item i-sp target-periods
+              set p-accumilated p-accumilated + (item i-sp target-periods)
+              set target-times lput (p-accumilated) target-times
+            ]
+            ;; generate the trip to the first b-destination
+            ;; note that the sp-destination is inherited from
+            let trip-temp nobody
+            let o location
+            let d sp-destination
+            ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+            set trip trip-temp
+          ]
+        ]
+        ;; increment index to check the next bus
+        set i-bus i-bus + 1
+      ]
+      
+    ]
+  ]
+  
+end
+
+to buses-init-old
+  ;; if the starting point is a start one for a bus, and its next bus should start moving
+  
+  create-buses 1 [
+    ;; initialise parameters
+    set color red                     ; Set vehicle color
+    set shape "default"               ; Set vehicle shape
+    set size 2
+    set initial-step? true
+    set at-activity? true
+    set tolerance truncated-normal 0 1 mean-tolerance 0.3
+    set buffer-period random (max-buffer-period * (tick-time-scale / 3600))
+    set my-home one-of buildings with [ b-type = "home" ]     ; Select a random starting point
+    set location my-home
+    move-to location
+    set top-speed (( random-float ( fastest-car - slowest-car ) ) + ( 1.0 * slowest-car )) * (tick-time-scale / 3600); Set random maximum speed
+    set speed top-speed                  ; Set initial speed to maximum speed
+    set modify? (list)
+    set modify-type (list)
+    set periods (list)
+    set b-destinations (list)
+    set activity (list)
+    set activity-weight (list)
+    set target-times (list)
+    set expected-periods (list)
+    set cancel-periods (list)
+    set cancel-periods-% (list)
+    set times (list)
+    set delays (list)
+    set active? true
+;    set top-speed ( random-float ( fastest-car - slowest-car ) ) + ( 1.0 * slowest-car ) ; Set random maximum speed
+;    set speed top-speed                ; Set initial speed to maximum speed
+    
+    ;; create a full list of activities (to be randomly selected from with no repititions)
+    let activity-options (list)
+    let a-id 1
+    repeat max-n-activities [
+      set activity-options lput a-id activity-options
+      set a-id a-id + 1
+    ]
+    
+    ;; generate the required number of trips
+    let n-trips (random max-n-activities) + 1
+    let temp-building nobody
+    ;; iterate through the trips to allocate parameter values
+    repeat n-trips [
+      ;; allocate activity
+      set temp-building one-of buildings with [ b-type = "building" and not member? self [b-destinations] of myself ]
+      set b-destinations lput temp-building b-destinations
+      let a one-of activity-options
+      set activity lput a activity
+      set activity-options remove a activity-options
+      
+      ;; allocate period threshold percentages
+      let percent-list (list period-threshold-1 period-threshold-2 period-threshold-3 period-threshold-4)
+      let a-index a - 1
+      let mean-percent item a-index percent-list
+      let std-percent period-threshold-std
+      let minimum 0
+      let maximum nobody ;; implies truncated-normal will ignore the maximum restriction
+      let percent truncated-normal minimum maximum mean-percent std-percent
+      set cancel-periods-% lput percent cancel-periods-%
+      
+      ;; allocate modify? and modify-type
+      set modify? lput false modify?
+      set modify-type lput nobody modify-type
+    ]
+    
+    ;; add the home as the final trip if required
+    if return-home? = true [
+      set b-destinations lput my-home b-destinations
+      set activity lput 0 activity
+      set activity-weight lput 1 activity-weight
+      set cancel-periods-% lput nobody cancel-periods-%   ;; implies the activity will never be cancelled
+      set modify? lput false modify?
+      set modify-type lput nobody modify-type
+    ]
+    ;; allocate first bulding in b-destinations list as the next b-destination
+    set b-destination item 0 b-destinations
+    ;; generate the trip to the first b-destination
+    let trip-temp nobody
+    let o [nearest-node] of my-home
+    let d [nearest-node] of b-destination
+    ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+    set trip trip-temp
+    ;; set the target times and expected periods to reach b-destinations
+    foreach b-destinations [ 
+      b -> 
+      let i position b b-destinations
+      let target-time report-target-time b
+      set target-times lput target-time target-times
+      let expected-period report-expected-period b
+      set expected-periods lput expected-period expected-periods
+      ;; cancel periods calculations
+      let cancel-period-% item i cancel-periods-%
+      ifelse cancel-period-% = nobody 
+      [set cancel-periods lput nobody cancel-periods]
+      [set cancel-periods lput (expected-period * (cancel-period-% / 100)) cancel-periods]
+    ]
+    
+    ;; calculate weights
+    foreach cancel-periods [
+      p -> 
+      ifelse max cancel-periods = 0 or p = nobody 
+      [set activity-weight lput 1 activity-weight]
+      [
+        let w 1 - (p / max cancel-periods)
+        set activity-weight lput w activity-weight
+      ]
+    ]
+    
+  ]
+end
+
+
+to buses-travel
+  ;; generate the trip
+  ;;  assure the trip is not empty
+  ;; find the expected period for the trip
+  ifelse at-sp? [ ; if the vehicle is at a stop point
+    let o location ;; origin is location because vehicle is at a start point
+    let d item i-destination sp-destinations
+    let trip-temp nobody
+    ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip 
+    set trip trip-temp
+    ;; find the expected and cancel periods of the next trip
+    let expected-period 0
+    foreach trip [ r -> set expected-period expected-period + [current_period] of r]
+    ;; allocate expected and cancel periods to the list
+    set expected-periods replace-item i-destination expected-periods expected-period
+    ;; find the target time and remove from activity if the trip must start
+    let target-time item i-destination target-times
+    if ticks + expected-period >= target-time [
+      ask location [
+        let i position ([service] of myself) buses-id
+        set buses-period replace-item i buses-period (minutes-to-ticks (item i buses-freq))
+      ]
+      let o-node location
+      ;; set the destination to the next node
+      set-destination o-node
+      set remaining-progress progress   ; Set initial remaining progress
+      update-colour
+      set at-sp? false
+    ]
+    
+    ;; load passengers HERE
+    
+  ]
+  ; If the vehicle is not at a start point
+  [
+    ;; set default speed
+    set speed top-speed  
+    ;; color based on the number of the b-destination
+    set color green
+    
+    ; see what vehicles there are ahead
+    let c check-ahead
+    if destination = 0 [type "1\n"]
+    move-at-correct-speed
+    
+    ; If the vehicle reaches end of road, start on the next road of the trip if there is one
+    if scaled-distance location >= progress and not empty? trip [
+      if check-ahead [
+        set destination-time ticks ; update the destination time
+        ask road [who] of location [who] of destination [ ; allocate the period to the road link
+          set current_period [destination-time] of myself - [location-time] of myself
+        ]
+        set location-time ticks ; update the new location time
+        let difference scaled-distance location - progress ; Calculate remaining distance
+                                                    ; remove current trip link and proceed to the next link (new origin is the old destination)
+        set-destination destination ; the input to set-destination is the new origin
+        set speed difference
+        set c check-ahead  
+        if destination = 0 [type "2\n"]
+        move-at-correct-speed
+      ]
+    ]
+    
+    
+    ;;
+    ; If the vehicle reaches end of road and it is the last road link in the trip
+    if scaled-distance location >= progress and empty? trip [
+      set destination-time ticks ; update the destination time
+      ask road [who] of location [who] of destination [ ; allocate the period to the road link
+        set current_period [destination-time] of myself - [location-time] of myself
+      ]
+      set location-time ticks ; update the new location time
+      set location sp-destination
+      move-to sp-destination
+      ;; update periods
+      set times lput ticks times
+      let current-period (ticks - sum periods)
+      set periods lput current-period periods
+      ;; update delays
+      let current-delay ticks - item i-destination target-times
+      set delays lput current-delay delays
+      
+      ;; proceed to the next trip if possible
+      ;; if the vehicle reached an sp-destination that is not its last sp-destination
+      ifelse sp-destination != last sp-destinations [
+        set i-destination i-destination + 1
+        set sp-destination item i-destination sp-destinations
+        set remaining-sp-destinations but-first remaining-sp-destinations
+        set at-sp? true
+        update-colour
+        let o location ;; origin is location because vehicle is at an activity
+        let d sp-destination
+        let trip-temp nobody
+        ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+        set trip trip-temp
+      ]
+      [ ;; if the vehicle reached its last sp-destination
+        die
+      ]
+      
+    ]
+  ]
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
