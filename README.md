@@ -28,4 +28,5 @@ Details
 
 ### Process Overview and Scheduling
 
-The model operates in two main procedures: `setup` and `go`. `Setup` initializes the nodes, buildings, and cars, buses and pedestrians and `go` advances the simulation by one tick. For a detailed description of the initialisation, input and the run submodels, refer to Yahya Gamal, Ricardo Colasanti, Gary Polhill, Tatsuya Mitomi, Esra Suel, Alison Heppenstall. MATraM: A multi-activity transport and mobility agent-based model for activity modifications. 2026.
+The model operates in two main procedures: `setup` and `go`. `Setup` initializes the nodes, buildings, and cars, buses and pedestrians and `go` advances the simulation by one tick. For a detailed description of the initialisation, input and the run submodels, refer to:
+- Yahya Gamal, Ricardo Colasanti, Gary Polhill, Tatsuya Mitomi, Esra Suel, Alison Heppenstall. MATraM: A multi-activity transport and mobility agent-based model for activity modifications. 2026.
