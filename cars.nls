@@ -1,46 +1,45 @@
 breed [cars car]
 
 cars-own [
-  location            ; Current location of the vehicle (origin node on current link)
-  destination         ; Destination of the vehicle (destination node on current link)
-  location-time       ; Time step at which the vehicle was at the loaction
-  destination-time    ; Time step at which the vehicle reached the destination
-  top-speed           ; Maximum speed of the vehicle
-  speed               ; Current speed of the vehicle
-  speed-restriction   ; Local speed restriction
-  progress            ; Total distance of the current progress on a road (total distance from origin to reach the destination)
-  remaining-progress  ; Remaining distance of the current progress on a road (remaining distance from origin to reach the destination)
-  trip                ; the path to ultimate destination is a list of roads
-  active?             ; if vehicle has not finished all its required trips
-  at-activity?        ; whether the vehicle is at a b-destination for an activity or not
-  my-home             ; home of vehicle
-  b-destinations      ; the list of all the building destinations (in order)
-  b-destination       ; the destination building for the vehicle
-  i-destination       ; the index of the destination building in the b-destinations
-  activity            ; the list of the types of the activities signposted using integers (in order)
-  activity-weight     ; the list of the weights given to each activity
-  target-times        ; the target time steps to reach each destination
-  times               ; the time steps at which the vehicle reached its destinations
-  delays              ; the delay periods (comparing times to target-times)
-  expected-periods    ; the expected time steps to be taken to reach the destinations
-  buffer-period       ; the number of time steps the vehicle moves earlier than it should to achieve its target-times
-  periods             ; the list of the periods taken to reach each b-destination
-  cancel-periods      ; the period thresholds at which an activity modification is requested
-  cancel-periods-%    ; the percentage of the expected period that yields a threshold at which an activity modification is requested
-  tolerance           ; the tolerance of individuals for long trips
-  modify?             ; whether the agent requests an activity modification or not
-  modify-type         ; type of activity modification type - can be "cancel" or "reschedule"
-  initial-step?       ; whether the vehicle is at the initial trip from home or not
+  location               ; Current location of the vehicle (origin node on current link)
+  destination            ; Destination of the vehicle (destination node on current link)
+  location-time          ; Time step at which the vehicle was at the loaction
+  destination-time       ; Time step at which the vehicle reached the destination
+  b-location-time        ; Time step at which the vehicle was at the last b-destination (i.e., b-location)
+  top-speed              ; Maximum speed of the vehicle
+  speed                  ; Current speed of the vehicle
+  speed-restriction      ; Local speed restriction
+  progress               ; Total distance of the current progress on a road (total distance from origin to reach the destination)
+  remaining-progress     ; Remaining distance of the current progress on a road (remaining distance from origin to reach the destination)
+  trip                   ; the path to ultimate destination is a list of roads
+  active?                ; if vehicle has not finished all its required trips
+  at-activity?           ; whether the vehicle is at a b-destination for an activity or not
+  my-home                ; home of vehicle
+  b-destinations         ; the list of all the building destinations (in order)
+  b-destination          ; the destination building for the vehicle
+  i-destination          ; the index of the destination building in the b-destinations
+  activity               ; the list of the types of the activities signposted using integers (in order)
+  activity-weight        ; the list of the weights given to each activity
+  target-times           ; the target time steps to reach each destination
+  times                  ; the time steps at which the vehicle reached its destinations
+  delays                 ; the delay periods (comparing times to target-times)
+  expected-periods       ; the expected time steps to be taken to reach the destinations
+  target-periods         ; the target time steps to be taken to reach the destinations
+  buffer-period          ; the number of time steps the vehicle moves earlier than it should to achieve its target-times
+  periods                ; the list of the periods taken to reach each b-destination
+  cancel-periods         ; the period thresholds at which an activity modification is requested
+  cancel-periods-%       ; the percentage of the expected period that yields a threshold at which an activity modification is requested
+  tolerance              ; the tolerance of individuals for long trips
+  utility                ; the utility gained from the conditions when achieving a trip (delay period)
+  utility-raw-attributes ; the raw values of the attributes considered in the utility
+  utility-per-attribute  ; the paramters used to calculate utility per trip
+  utility-weights        ; the utility weights per parameter used to calculate utility per trip
+  utility-thresholds     ; the utility values below which an activity modification is flagged
+  modify?                ; whether the agent requests an activity modification or not
+  modify-type            ; type of activity modification type - can be "cancel" or "reschedule"
+  initial-step?          ; whether the vehicle is at the initial trip from home or not
 ]
 
-globals [
-  activity-record
-  delay-record
-  threshold-record
-  weight-record
-  period-record
-  modify-record
-]
 
 to cars-init [input-number-of-cars]
   set activity-record (list)
@@ -49,115 +48,293 @@ to cars-init [input-number-of-cars]
   set weight-record (list)
   set period-record (list)
   set modify-record (list)
-  create-cars input-number-of-cars [
-    ;; initialise parameters
-    set color red                     ; Set vehicle color
-    set shape "default"               ; Set vehicle shape
-    set size 2
-    set initial-step? true
-    set at-activity? true
-    set tolerance truncated-normal 0 1 mean-tolerance 0.3
-    set buffer-period random (max-buffer-period * (tick-time-scale / 3600))
-    set my-home one-of buildings with [ b-type = "home" ]     ; Select a random starting point
-    set location my-home
-    move-to location
-    set top-speed ( (random-float ( fastest-car - slowest-car )) + ( 1.0 * slowest-car ) ) * (tick-time-scale / 3600); Set random maximum speed
-    set speed top-speed                  ; Set initial speed to maximum speed
-    set modify? (list)
-    set modify-type (list)
-    set periods (list)
-    set b-destinations (list)
-    set activity (list)
-    set activity-weight (list)
-    set target-times (list)
-    set expected-periods (list)
-    set cancel-periods (list)
-    set cancel-periods-% (list)
-    set times (list)
-    set delays (list)
-    set active? true
-;    set top-speed ( random-float ( fastest-car - slowest-car ) ) + ( 1.0 * slowest-car ) ; Set random maximum speed
-;    set speed top-speed                ; Set initial speed to maximum speed
-    
-    ;; create a full list of activities (to be randomly selected from with no repititions)
-    let activity-options (list)
-    let a-id 1
-    repeat max-n-activities [
-      set activity-options lput a-id activity-options
-      set a-id a-id + 1
+  set modify-car-record (list)
+  set modify-pedestrian-walk-record (list)
+  set modify-pedestrian-public-transport-record (list)
+  
+  (ifelse 
+    synthetic-population = "Input data" [
+      carefully [
+        ;; Load the node list from a CSV file
+        let csv-data csv:from-file "Data/synthetic_population.csv"
+        
+        ;; Separate the header row from the data rows
+        let header-row first csv-data
+        let data-rows butfirst csv-data
+        
+        ;; Loop through the data rows and create nodes
+        ;; item 0 row --> breed
+        ;; item 1 row --> my-home
+        ;; item 2 row --> activities
+        ;; item 3 row --> b-destinations
+        ;; item 4 row --> target-periods
+        ;; item 5 row --> target-times
+        ;; item 6 row --> utility-weights
+        ;; item 7 row --> utility-thresholds
+        foreach data-rows [
+          row ->
+          ;; read the csv file
+          let breed-csv item 0 row
+          let my-home-csv item 1 row
+          let activity-csv read-from-string (remove "," item 2 row)
+          let b-destinations-csv replace-single-quotations item 3 row
+          set b-destinations-csv read-from-string (remove "," b-destinations-csv)
+          let target-periods-csv read-from-string (remove "," item 4 row)
+          let target-times-csv read-from-string (remove "," item 5 row)
+          let utility-weights-csv read-from-string (remove "," item 6 row)
+          let utility-thresholds-csv read-from-string (remove "," item 7 row)
+          
+          if breed-csv = "car" [
+            create-cars 1 [
+              ;; initialise parameters
+              set color red                     ; Set vehicle color
+              set shape "default"               ; Set vehicle shape
+              set size 2
+              set initial-step? true
+              set at-activity? true
+              set tolerance truncated-normal 0 1 mean-tolerance 0.3
+              set buffer-period random (max-buffer-period * (tick-time-scale / 3600))
+              set my-home one-of buildings with [ b-id = my-home-csv ]     ; Allocate to the input my-home
+              set location my-home
+              move-to location
+              set top-speed ( (random-float ( fastest-car - slowest-car )) + ( 1.0 * slowest-car ) ) * (tick-time-scale / 3600); Set random maximum speed
+              set speed top-speed                  ; Set initial speed to maximum speed
+              set modify? (list)
+              set modify-type (list)
+              set periods (list)
+              set b-destinations (list)
+              set activity activity-csv
+              set activity-weight (list)
+              set target-times (list)
+              set expected-periods (list)
+              set target-periods (list)
+              set cancel-periods (list)
+              set cancel-periods-% (list)
+              set utility (list)
+              set utility-raw-attributes (list)
+              set utility-per-attribute (list)
+              set utility-weights utility-weights-csv
+              set utility-thresholds utility-thresholds-csv
+              set times (list)
+              set delays (list)
+              set active? true
+              ;    set top-speed ( random-float ( fastest-car - slowest-car ) ) + ( 1.0 * slowest-car ) ; Set random maximum speed
+              ;    set speed top-speed                ; Set initial speed to maximum speed
+              set activity activity-csv
+              
+              ;; generate the required number of trips
+              let n-trips length activity
+              let temp-building nobody
+              let i-trip 0
+              ;; iterate through the trips to allocate parameter values
+              repeat n-trips [
+                ;; allocate activity
+                set temp-building one-of buildings with [ b-id = item i-trip b-destinations-csv ]
+                set b-destinations lput temp-building b-destinations
+                
+                ;; allocate period threshold percentages
+                let percent-list (list period-threshold-1 period-threshold-2 period-threshold-3 period-threshold-4)
+                let a item i-trip activity
+                
+                let a-index a - 1
+                ifelse a > 0 [ ;; if the trip is not to return home, cancellation is an option
+                  let mean-percent item a-index percent-list
+                  let std-percent period-threshold-std
+                  let minimum 0
+                  let maximum nobody ;; implies truncated-normal will ignore the maximum restriction
+                  let percent truncated-normal minimum maximum mean-percent std-percent
+                  set cancel-periods-% lput percent cancel-periods-%
+                ]
+                [ set cancel-periods-% lput nobody cancel-periods-% ] 
+                
+                ;; utility
+                set utility lput 0 utility
+                
+                ;; allocate modify? and modify-type
+                set modify? lput false modify?
+                set modify-type lput nobody modify-type
+                
+                set i-trip i-trip + 1
+              ]
+              
+              
+              ;; allocate first bulding in b-destinations list as the next b-destination
+              set b-destination item 0 b-destinations
+              ;; generate the trip to the first b-destination
+              let trip-temp nobody
+              let o [nearest-node] of my-home
+              let d [nearest-node] of b-destination
+              ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+              set trip trip-temp
+              ;; set the target times and expected periods to reach b-destinations
+              set target-times target-times-csv
+              set expected-periods target-periods-csv
+              set target-periods target-periods-csv
+              foreach b-destinations [ 
+                b -> 
+                let i position b b-destinations
+                let expected-period item i expected-periods
+                let cancel-period-% item i cancel-periods-%
+                ifelse cancel-period-% = nobody 
+                [set cancel-periods lput nobody cancel-periods]
+                [set cancel-periods lput (expected-period * (cancel-period-% / 100)) cancel-periods]
+              ]
+              
+              ;; calculate weights
+              foreach cancel-periods [
+                p -> 
+                ifelse max cancel-periods = 0 or p = nobody 
+                [set activity-weight lput 1 activity-weight]
+                [
+                  let w 1 - (p / max cancel-periods)
+                  set activity-weight lput w activity-weight
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+      [type "Error in synthetic population data (cars)"]
     ]
     
-    ;; generate the required number of trips
-    let n-trips (random max-n-activities) + 1
-    let temp-building nobody
-    ;; iterate through the trips to allocate parameter values
-    repeat n-trips [
-      ;; allocate activity
-      set temp-building one-of buildings with [ b-type = "building" and not member? self [b-destinations] of myself ]
-      set b-destinations lput temp-building b-destinations
-      let a one-of activity-options
-      set activity lput a activity
-      set activity-options remove a activity-options
-      
-      ;; allocate period threshold percentages
-      let percent-list (list period-threshold-1 period-threshold-2 period-threshold-3 period-threshold-4)
-      let a-index a - 1
-      let mean-percent item a-index percent-list
-      let std-percent period-threshold-std
-      let minimum 0
-      let maximum nobody ;; implies truncated-normal will ignore the maximum restriction
-      let percent truncated-normal minimum maximum mean-percent std-percent
-      set cancel-periods-% lput percent cancel-periods-%
-      
-      ;; allocate modify? and modify-type
-      set modify? lput false modify?
-      set modify-type lput nobody modify-type
-    ]
+  
+  
     
-    ;; add the home as the final trip if required
-    if return-home? = true [
-      set b-destinations lput my-home b-destinations
-      set activity lput 0 activity
-      set activity-weight lput 1 activity-weight
-      set cancel-periods-% lput nobody cancel-periods-%   ;; implies the activity will never be cancelled
-      set modify? lput false modify?
-      set modify-type lput nobody modify-type
-    ]
-    ;; allocate first bulding in b-destinations list as the next b-destination
-    set b-destination item 0 b-destinations
-    ;; generate the trip to the first b-destination
-    let trip-temp nobody
-    let o [nearest-node] of my-home
-    let d [nearest-node] of b-destination
-    ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
-    set trip trip-temp
-    ;; set the target times and expected periods to reach b-destinations
-    foreach b-destinations [ 
-      b -> 
-      let i position b b-destinations
-      let target-time report-target-time b
-      set target-times lput target-time target-times
-      let expected-period report-expected-period b
-      set expected-periods lput expected-period expected-periods
-      ;; cancel periods calculations
-      let cancel-period-% item i cancel-periods-%
-      ifelse cancel-period-% = nobody 
-      [set cancel-periods lput nobody cancel-periods]
-      [set cancel-periods lput (expected-period * (cancel-period-% / 100)) cancel-periods]
-    ]
-    
-    ;; calculate weights
-    foreach cancel-periods [
-      p -> 
-      ifelse max cancel-periods = 0 or p = nobody 
-      [set activity-weight lput 1 activity-weight]
-      [
-        let w 1 - (p / max cancel-periods)
-        set activity-weight lput w activity-weight
+    synthetic-population = "Input model parameters"
+    [
+      create-cars input-number-of-cars [
+        ;; initialise parameters
+        set color red                     ; Set vehicle color
+        set shape "default"               ; Set vehicle shape
+        set size 2
+        set initial-step? true
+        set at-activity? true
+        set tolerance truncated-normal 0 1 mean-tolerance 0.3
+        set buffer-period random (max-buffer-period * (tick-time-scale / 3600))
+        set my-home one-of buildings with [ b-type = "home" ]     ; Select a random starting point
+        set location my-home
+        move-to location
+        set top-speed ( (random-float ( fastest-car - slowest-car )) + ( 1.0 * slowest-car ) ) * (tick-time-scale / 3600); Set random maximum speed
+        set speed top-speed                  ; Set initial speed to maximum speed
+        set modify? (list)
+        set modify-type (list)
+        set periods (list)
+        set b-destinations (list)
+        set activity (list)
+        set activity-weight (list)
+        set target-times (list)
+        set expected-periods (list)
+        set target-periods (list)
+        set cancel-periods (list)
+        set cancel-periods-% (list)
+        set utility (list)
+        set utility-raw-attributes (list)
+        set utility-per-attribute (list)
+        set utility-weights (list)
+        set utility-thresholds (list)
+        set times (list)
+        set delays (list)
+        set active? true
+        ;    set top-speed ( random-float ( fastest-car - slowest-car ) ) + ( 1.0 * slowest-car ) ; Set random maximum speed
+        ;    set speed top-speed                ; Set initial speed to maximum speed
+        
+        ;; create a full list of activities (to be randomly selected from with no repititions)
+        let activity-options (list)
+        let a-id 1
+        repeat max-n-activities [
+          set activity-options lput a-id activity-options
+          set a-id a-id + 1
+        ]
+        
+        ;; generate the required number of trips
+        let n-trips (random max-n-activities) + 1
+        let temp-building nobody
+        ;; iterate through the trips to allocate parameter values
+        repeat n-trips [
+          ;; allocate activity
+          set temp-building one-of buildings with [ b-type = "building" and not member? self [b-destinations] of myself ]
+          set b-destinations lput temp-building b-destinations
+          let a one-of activity-options
+          set activity lput a activity
+          set activity-options remove a activity-options
+          
+          ;; allocate period threshold percentages
+          let percent-list (list period-threshold-1 period-threshold-2 period-threshold-3 period-threshold-4)
+          let a-index a - 1
+          let mean-percent item a-index percent-list
+          let std-percent period-threshold-std
+          let minimum 0
+          let maximum nobody ;; implies truncated-normal will ignore the maximum restriction
+          let percent truncated-normal minimum maximum mean-percent std-percent
+          set cancel-periods-% lput percent cancel-periods-%
+          
+          ;; utility
+          let threshold-list (list utility-threshold-1 utility-threshold-2 utility-threshold-3 utility-threshold-4)
+          set a-index a - 1
+          let mean-threshold item a-index threshold-list
+          let std-threshold utility-threshold-std
+          set minimum 0
+          set maximum nobody
+          let threshold truncated-normal minimum maximum mean-threshold std-threshold
+          set utility-thresholds lput threshold utility-thresholds
+          set utility-weights lput (list 1) utility-weights
+          set utility lput 0 utility
+          
+          ;; allocate modify? and modify-type
+          set modify? lput false modify?
+          set modify-type lput nobody modify-type
+        ]
+        
+        ;; add the home as the final trip if required
+        if return-home? = true [
+          set b-destinations lput my-home b-destinations
+          set activity lput 0 activity
+          set activity-weight lput 1 activity-weight
+          set cancel-periods-% lput nobody cancel-periods-%   ;; implies the activity will never be cancelled
+          set utility-thresholds lput nobody utility-thresholds ;; implies the activity will never be cancelled
+          set utility-weights lput (list 1) utility-weights
+          set utility lput 0 utility
+          set modify? lput false modify?
+          set modify-type lput nobody modify-type
+        ]
+        ;; allocate first bulding in b-destinations list as the next b-destination
+        set b-destination item 0 b-destinations
+        ;; generate the trip to the first b-destination
+        let trip-temp nobody
+        let o [nearest-node] of my-home
+        let d [nearest-node] of b-destination
+        ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
+        set trip trip-temp
+        ;; set the target times and expected periods to reach b-destinations
+        foreach b-destinations [ 
+          b -> 
+          let i position b b-destinations
+          let target-time report-target-time b
+          set target-times lput target-time target-times
+          let expected-period report-expected-period b
+          set expected-periods lput expected-period expected-periods
+          set target-periods lput expected-period target-periods
+          ;; cancel periods calculations
+          let cancel-period-% item i cancel-periods-%
+          ifelse cancel-period-% = nobody 
+          [set cancel-periods lput nobody cancel-periods]
+          [set cancel-periods lput (expected-period * (cancel-period-% / 100)) cancel-periods]
+        ]
+        
+        ;; calculate weights
+        foreach cancel-periods [
+          p -> 
+          ifelse max cancel-periods = 0 or p = nobody 
+          [set activity-weight lput 1 activity-weight]
+          [
+            let w 1 - (p / max cancel-periods)
+            set activity-weight lput w activity-weight
+          ]
+        ]
+        
       ]
     ]
-    
-  ]
+  )
 end
 
 ;; set the target times to reach an input building as a destination
@@ -235,6 +412,12 @@ to cars-travel
       let trip-temp nobody
       ask o [ set trip-temp nw:weighted-path-to d distance_to_destination ] ;; generate the expected trip
       set trip trip-temp
+      if length times < i-destination + 1 [
+        set times lput item (i-destination - 1) target-times times
+        set delays lput 0 delays
+        set periods lput 0 periods
+        calculate-utility i-destination - 1
+      ]
     ]
     ;; if the vehicle is targeting the last b-destination and the destination is very close
     if b-destination = last b-destinations and length trip = 0 [
@@ -243,15 +426,26 @@ to cars-travel
     ]
     ;; find the expected and cancel periods of the next trip
     let expected-period 0
+    let target-period item i-destination expected-periods 
     let cancel-period 0
     let cancel-period-% item i-destination cancel-periods-%
     foreach trip [ r -> set expected-period expected-period + [current_period] of r]
-    ifelse cancel-period-% = nobody
-    [set cancel-period nobody]
-    [set cancel-period expected-period * ( cancel-period-% / 100 )]
+;    ifelse cancel-period-% = nobody
+;    [set cancel-period nobody]
+;    [set cancel-period expected-period * ( cancel-period-% / 100 )]
     ;; allocate expected and cancel periods to the list
     set expected-periods replace-item i-destination expected-periods expected-period
-    set cancel-periods replace-item i-destination cancel-periods cancel-period
+    if synthetic-population = "Input model parameters" [
+      set target-period expected-period
+      set target-periods replace-item i-destination target-periods target-period
+      ifelse cancel-period-% = nobody
+      [set cancel-period nobody]
+      [set cancel-period target-period * ( cancel-period-% / 100 )]
+      set cancel-periods replace-item i-destination cancel-periods cancel-period
+    ]
+;    ifelse cancel-period-% = nobody
+;    [set cancel-period nobody]
+;    [set cancel-period target-period * ( cancel-period-% / 100 )]  ;; target period is updated to expected period only if SP is not an input CSV
     ;; find the target time and remove from activity if the trip must start
     let target-time item i-destination target-times
     if ticks + buffer-period + expected-period >= target-time [
@@ -261,6 +455,8 @@ to cars-travel
       if not any? (cars-on o-node) with [at-activity? = false] [
         move-to o-node
         set-destination o-node
+        set location-time ticks
+        set b-location-time ticks
         set remaining-progress progress   ; Set initial remaining progress
         set at-activity? false
         update-colour
@@ -310,22 +506,26 @@ to cars-travel
       move-to b-destination
       ;; update periods
       set times lput ticks times
-      let current-period (ticks - sum periods)
+;      let current-period (ticks - sum periods)
+      let current-period (ticks - b-location-time)
       set periods lput current-period periods
       ;; update delays
       let current-delay ticks - item i-destination target-times
       set delays lput current-delay delays
-      ;; check if there is a need to modify the activity
-      if item i-destination cancel-periods != nobody and current-period > item i-destination cancel-periods [
-        set modify? replace-item i-destination modify? true
-        set modify-type replace-item i-destination modify-type "cancel" ;; placeholder until input data from survey is used
-        set activity-record lput (item i-destination activity) (activity-record)
-        set delay-record lput current-delay delay-record
-        set threshold-record lput (item i-destination cancel-periods) (threshold-record)
-        set weight-record lput (item i-destination activity-weight) weight-record
-        set period-record lput current-period period-record
-        set modify-record lput (item i-destination modify-type) modify-record
-      ]
+;      ;; check if there is a need to modify the activity
+;      if item i-destination cancel-periods != nobody and current-period > item i-destination cancel-periods [
+;        set modify? replace-item i-destination modify? true
+;        set modify-type replace-item i-destination modify-type "cancel" ;; placeholder until input data from survey is used
+;        set activity-record lput (item i-destination activity) (activity-record)
+;        set delay-record lput current-delay delay-record
+;        set threshold-record lput (item i-destination cancel-periods) (threshold-record)
+;        set weight-record lput (item i-destination activity-weight) weight-record
+;        set period-record lput current-period period-record
+;        set modify-record lput (item i-destination modify-type) modify-record
+;      ]
+      
+      calculate-utility i-destination
+      flag-modification-request
       
       ;; proceed to the next trip if possible
       ;; if the vehicle reached a b-destination that is not its last b-destination
@@ -464,6 +664,64 @@ end
 ;to-report delay-threshold [my-tolerance my-activity-weight my-min-delay-threshold]
 ;  report (my-min-delay-threshold * my-tolerance) / (my-activity-weight)
 ;end
+
+;; update the utility value for the current activity
+to calculate-utility [i]
+  
+  ;; calculate the utility for the relevant parameter
+  ;; modellers can modify this to calculate utilities from different attributes
+  let current-delay item i delays
+  let target-period item i expected-periods
+  let arrival-utility 1
+  if target-period != 0 [set arrival-utility 1 - (current-delay / target-period)]
+  
+  ;; store the utilities calculated
+  ;; modellers can modify this to store mutiple attributes as follows:
+  ;; set utility-per-attribute lput (list u_1 u_2 u_3 ...) utility-per-attribute
+  set utility-per-attribute lput (list arrival-utility) utility-per-attribute
+  set utility-raw-attributes lput (list current-delay) utility-raw-attributes
+  
+  ;; utility-per-attribute-temp -> a list of utilities per attributes for the trip at i-destination
+  ;; weights-temp -> a list of weights per attribute for the trip at i-destination 
+  let u-temp nobody
+  let utility-per-attribute-temp item i utility-per-attribute   
+  let weights-temp item i utility-weights            
+  ;; utility function can be modified by the modellers 
+  ;; (a linear weighted function is used here)
+  set u-temp (dot utility-per-attribute-temp weights-temp)
+  
+  ;; update the utility parameter
+  set utility replace-item i utility u-temp
+end
+
+to flag-modification-request
+  let current-period 0
+  let current-delay 0
+  
+  ;; check utility thresholds
+  if item i-destination utility-thresholds != nobody
+  and item i-destination utility < item i-destination utility-thresholds [
+    
+    ;; flag a modification request
+    ;; "cancel" is a placeholder, subject to modification as per empirical approach 
+    ;; (e.g., different thresholds can trigger different modification types, such as reroute)
+    set modify? replace-item i-destination modify? true
+    set modify-type replace-item i-destination modify-type "cancel" 
+    
+    ;; update global variables to generate UI plots 
+    set activity-record lput (item i-destination activity) (activity-record)
+    set delay-record lput current-delay delay-record
+    set threshold-record lput (item i-destination cancel-periods) (threshold-record)
+    set weight-record lput (item i-destination activity-weight) weight-record
+    set period-record lput current-period period-record
+    set modify-record lput (item i-destination modify-type) modify-record
+    (ifelse 
+      is-car? self [set modify-car-record lput (item i-destination modify-type) modify-car-record]
+      is-pedestrian? self and length trip-legs-modes = 3 [set modify-pedestrian-public-transport-record lput (item i-destination modify-type) modify-pedestrian-public-transport-record]
+      is-pedestrian? self and length trip-legs-modes = 1 [set modify-pedestrian-walk-record lput (item i-destination modify-type) modify-pedestrian-walk-record]
+    )
+  ]
+end
 
 to-report truncated-normal [min-value max-value mean-value std]
   if min-value = 0 and max-value = 0 [report 0]

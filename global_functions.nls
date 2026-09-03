@@ -12,8 +12,45 @@ to-report scaled-distance [input-node]
   report (distance input-node) * model-to-mile-factor
 end
 
+to-report hours-to-ticks [hours]
+  report (hours * 60 * 60) / tick-time-scale
+end
+
 to-report minutes-to-ticks [minutes]
   report (minutes * 60) / tick-time-scale
+end
+
+to-report replace-single-quotations [str]
+  let i 0
+  while [i < length str] [
+    let c item i str
+    if c = "'" [set str replace-item i str "\"" ]
+    set i i + 1
+  ]
+  report str
+end
+
+to-report dot [a b]
+  if length a != length b [type "Warning: Dot product between matrices of different dimensions detected\n"]
+  let i 0
+  let result 0
+  carefully [
+    while [i < length a and i < length b] [
+      let a-element item i a
+      let b-element item i b
+      set result result + (a-element * b-element)
+      set i i + 1
+    ]
+  ]
+  [
+    error (word
+      "Error: possible dot product between matrices of different dimensions, length(a)=" length a
+      ", length(b)=" length b
+      "\n Error message: " error-message
+    )
+  ]
+  
+  report result
 end
 
 ;;; reports the road networks given a series of nodes as destinations

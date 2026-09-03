@@ -131,6 +131,8 @@ to buses-start-SPs
             set times (list)
             set delays (list)
             set active? false
+            ;; assure the location-time is not 0 (to avoid over estimating the current_period of the first road link)
+;            set location-time ticks
             ;; set the target times and expected periods to reach b-destinations
             set target-times (list)
             let p-accumilated ticks
@@ -303,6 +305,7 @@ to buses-travel
       let o-node location
       ;; set the destination to the next node
       set-destination o-node
+      set location-time ticks
       set remaining-progress progress   ; Set initial remaining progress
       update-colour
       set at-sp? false

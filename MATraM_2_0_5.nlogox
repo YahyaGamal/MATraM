@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <model version="NetLogo 7.0.0" snapToGrid="true">
   <code><![CDATA[; Include any necessary libraries
-extensions [ nw  csv]
+extensions [ nw  csv string ]
 __includes ["buses.nls" "cars.nls" "nodes.nls" "buildings.nls" "pedestrians.nls" "global_functions.nls"]
 
 ; monitors
@@ -11,6 +11,16 @@ globals [
   n-trips-list
   model-to-mile-factor
   mile-to-model-factor
+  
+  activity-record
+  delay-record
+  threshold-record
+  weight-record
+  period-record
+  modify-record
+  modify-car-record
+  modify-pedestrian-walk-record
+  modify-pedestrian-public-transport-record
 ]
 
 
@@ -44,7 +54,7 @@ end
 ; Advance the simulation by one tick
 to go
   let flag true
-  carefully [
+;  carefully [
     ask roads [
       set current_speeds (list)
     ]
@@ -55,7 +65,7 @@ to go
       vehicles-move ; Move the vehicles
       let post-period periods
       let post-delay delays
-      if pre-period != post-period [
+      if is-car? self and pre-period != post-period [
         set all-periods lput (last post-period) (all-periods)
         set all-delays lput (last post-delay) (all-delays)
       ]
@@ -73,19 +83,19 @@ to go
     update-SPs
 ;    if count cars = 0 and count pedestrians = 0 [stop]
     tick ; Advance the tick counter
-  ]
+;  ]
   
-  [
-    error (word
-      "Failure: run=" behaviorspace-run-number
-      ", seed=" current-seed
-      ", ticks=" ticks
-      ", number-of-cars=" number-of-cars
-      ", number-of-pedestrians=" number-of-pedestrians
-      "\n Error message: " error-message
-    )
-  ]
-  
+;  [
+;    error (word
+;      "Failure: run=" behaviorspace-run-number
+;      ", seed=" current-seed
+;      ", ticks=" ticks
+;      ", number-of-cars=" number-of-cars
+;      ", number-of-pedestrians=" number-of-pedestrians
+;      "\n Error message: " error-message
+;    )
+;  ]
+;  
   ;; added as carefully does not allow behaviour space runs to stop
   if flag = true [stop]
 end
@@ -129,71 +139,15 @@ end
 ; copyright and related or neighboring rights to this model.]]></code>
   <widgets>
     <view x="380" wrappingAllowedX="false" y="25" frameRate="30.0" minPycor="0" height="564" showTickCounter="true" patchSize="5.545" fontSize="10" wrappingAllowedY="false" width="564" tickCounterLabel="ticks" maxPycor="100" updateMode="1" maxPxcor="100" minPxcor="0"></view>
-    <slider x="25" step="20" y="25" max="500" display="number-of-cars" height="33" min="0" direction="Horizontal" default="200.0" variable="number-of-cars" width="170" sizeVersion="0"></slider>
-    <slider x="200" step="20" y="25" max="500" display="number-of-pedestrians" height="33" min="0" direction="Horizontal" default="300.0" variable="number-of-pedestrians" width="170" sizeVersion="0"></slider>
-    <slider x="200" step="0.5" y="95" max="4" display="fastest-pedestrian" height="33" min="1" direction="Horizontal" default="4.0" variable="fastest-pedestrian" units="mph" width="170" sizeVersion="0"></slider>
-    <button x="380" y="595" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="170">setup</button>
-    <button x="380" y="685" height="40" disableUntilTicks="true" forever="true" kind="Observer" width="170" display="go">go</button>
-    <button x="380" y="640" height="40" disableUntilTicks="true" forever="false" kind="Observer" width="170" display="go once">go</button>
-    <note x="750" y="595" backgroundDark="0" fontSize="8" width="170" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Control the seed value (Note that go-infinite increments the current-seed value every tick)</note>
-    <button x="570" y="595" height="40" disableUntilTicks="true" forever="true" kind="Observer" width="170" display="go-infinite">go-infinite</button>
-    <slider x="570" step="1" y="685" max="1000" display="current-seed" height="33" min="0" direction="Horizontal" default="5.86725296E8" variable="current-seed" width="170" sizeVersion="0"></slider>
-    <switch x="570" y="640" height="40" on="false" variable="control-seed?" width="170" display="control-seed?"></switch>
-    <note x="960" y="58" backgroundDark="0" fontSize="8" width="285" markdown="true" height="20" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Elapsed time in the simulation (hh mm ss)</note>
-    <monitor x="1055" precision="17" y="74" height="61" fontSize="11" width="100" display="Minutes">floor ((ticks * tick-time-scale) / 60) - (floor ((ticks * tick-time-scale) / (60 * 60))) * 60</monitor>
-    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Vehicle" y="260" xMin="0.0" height="120" legend="false" xMax="1000.0" yMin="0.0" width="290" xAxis="Time step" display="Trip time histogram">
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="525" xMin="-200.0" height="120" legend="false" xMax="300.0" yMin="0.0" width="290" display="Delays histogram">
       <setup></setup>
       <update></update>
       <pen interval="1.0" mode="1" display="default" color="-16777216" legend="true">
         <setup></setup>
-        <update>histogram all-periods
+        <update>histogram all-delays
 set-histogram-num-bars 100</update>
       </pen>
     </plot>
-    <monitor x="1150" precision="17" y="74" height="61" fontSize="11" width="100" display="Seconds">(floor ((ticks * tick-time-scale))) - ((floor ((ticks * tick-time-scale) / 60) - (floor ((ticks * tick-time-scale) / (60 * 60))) * 60) * 60)</monitor>
-    <monitor x="960" precision="17" y="74" height="61" fontSize="11" width="100" display="Hours">floor ((ticks * tick-time-scale) / (60 * 60))</monitor>
-    <slider x="960" step="0.1" y="24" max="0.5" display="tick-time-scale" height="33" min="0" direction="Horizontal" default="0.2" variable="tick-time-scale" units="Second(s)" width="290" sizeVersion="0"></slider>
-    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Trip time" y="140" xMin="0.0" height="120" legend="false" xMax="10.0" yMin="0.0" width="290" xAxis="Time step" display="Average time per trip">
-      <setup></setup>
-      <update></update>
-      <pen interval="1.0" mode="0" display="default" color="-16777216" legend="true">
-        <setup></setup>
-        <update>ifelse all-periods != (list) [plot mean all-periods] [plot 0]</update>
-      </pen>
-    </plot>
-    <slider x="25" step="10" y="60" max="100" display="slowest-car" height="33" min="10" direction="Horizontal" default="40.0" variable="slowest-car" units="mph" width="170" sizeVersion="0"></slider>
-    <slider x="25" step="0.5" y="95" max="4" display="slowest-pedestrian" height="33" min="1" direction="Horizontal" default="2.5" variable="slowest-pedestrian" units="mph" width="170" sizeVersion="0"></slider>
-    <slider x="200" step="10" y="60" max="100" display="fastest-car" height="33" min="10" direction="Horizontal" default="100.0" variable="fastest-car" units="mph" width="170" sizeVersion="0"></slider>
-    <slider x="200" step="10" y="130" max="100" display="fastest-bus" height="33" min="10" direction="Horizontal" default="40.0" variable="fastest-bus" units="mile/hour" width="170" sizeVersion="0"></slider>
-    <slider x="25" step="10" y="130" max="100" display="slowest-bus" height="33" min="10" direction="Horizontal" default="20.0" variable="slowest-bus" units="mile/hour" width="170" sizeVersion="0"></slider>
-    <chooser x="25" y="590" height="45" variable="threshold-input-type" current="1" display="threshold-input-type" width="345" sizeVersion="0">
-      <choice type="string" value="Empirical"></choice>
-      <choice type="string" value="Controlled"></choice>
-    </chooser>
-    <note x="25" y="560" backgroundDark="0" fontSize="8" width="345" markdown="true" height="30" textColorDark="-1" textColorLight="-16777216" backgroundLight="0"><![CDATA[period-threshold-<n> are percentages multiplied by the expected travel period to find the travel period threshold in ticks at which an activity modification is requested.]]></note>
-    <slider x="25" step="5" y="640" max="200" display="period-threshold-1" height="33" min="100" direction="Horizontal" default="105.0" variable="period-threshold-1" units="%" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="5" y="675" max="200" display="period-threshold-2" height="33" min="0100" direction="Horizontal" default="110.0" variable="period-threshold-2" units="%" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="5" y="710" max="200" display="period-threshold-3" height="33" min="100" direction="Horizontal" default="150.0" variable="period-threshold-3" units="%" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="5" y="745" max="200" display="period-threshold-4" height="33" min="100" direction="Horizontal" default="200.0" variable="period-threshold-4" units="%" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="5" y="780" max="100" display="period-threshold-std" height="33" min="0" direction="Horizontal" default="5.0" variable="period-threshold-std" units="%" width="345" sizeVersion="0"></slider>
-    <note x="25" y="815" backgroundDark="0" fontSize="8" width="345" markdown="true" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Minimum delay threshold at which an activity modification is requested is only reached if `w = 1`</note>
-    <slider x="25" step="1" y="830" max="20" display="min-delay-threshold" height="33" min="0" direction="Horizontal" default="20.0" variable="min-delay-threshold" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="0.05" y="865" max="1" display="mean-tolerance" height="33" min="0" direction="Horizontal" default="0.1" variable="mean-tolerance" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="1" y="165" max="4" display="max-n-activities" height="33" min="1" direction="Horizontal" default="2.0" variable="max-n-activities" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="5" y="210" max="480" display="max-activity-duration" height="33" min="0" direction="Horizontal" default="30.0" variable="max-activity-duration" units="min" width="345" sizeVersion="0"></slider>
-    <note x="25" y="195" backgroundDark="0" fontSize="8" width="345" markdown="true" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum time an agent spends at an activity (i.e., at a building)</note>
-    <note x="25" y="245" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum time spent after initialisation at home before the first trip
-(left for cars and right for pedestrians)</note>
-    <slider x="25" step="5" y="305" max="60" display="max-home-duration-cars" height="33" min="0" direction="Horizontal" default="60.0" variable="max-home-duration-cars" units="min" width="170" sizeVersion="0"></slider>
-    <note x="25" y="340" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum number of ticks that the vehicle moves earlier than it should to reach its next building destination</note>
-    <slider x="25" step="5" y="365" max="30" display="max-buffer-period" height="33" min="0" direction="Horizontal" default="10.0" variable="max-buffer-period" units="minutes" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="5" y="270" max="60" display="min-home-duration-cars" height="33" min="0" direction="Horizontal" default="30.0" variable="min-home-duration-cars" units="min" width="170" sizeVersion="0"></slider>
-    <slider x="200" step="5" y="305" max="60" display="max-home-duration-pedestrians" height="33" min="0" direction="Horizontal" default="45.0" variable="max-home-duration-pedestrians" units="min" width="170" sizeVersion="0"></slider>
-    <slider x="200" step="5" y="270" max="60" display="min-home-duration-pedestrians" height="33" min="0" direction="Horizontal" default="15.0" variable="min-home-duration-pedestrians" units="min" width="170" sizeVersion="0"></slider>
-    <slider x="25" step="0.02" y="525" max="0.5" display="search-radius-increase-increment" height="33" min="0" direction="Horizontal" default="0.02" variable="search-radius-increase-increment" units="miles" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="0.02" y="490" max="0.5" display="public-transport-search-radius" height="33" min="0" direction="Horizontal" default="0.1" variable="public-transport-search-radius" units="miles" width="345" sizeVersion="0"></slider>
-    <slider x="25" step="1" y="455" max="100" display="pedestrians-public-transport" height="33" min="0" direction="Horizontal" default="90.0" variable="pedestrians-public-transport" units="%" width="345" sizeVersion="0"></slider>
-    <switch x="25" y="400" height="40" on="true" variable="return-home?" width="345" display="return-home?"></switch>
     <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="380" xMin="0.0" height="145" legend="true" xMax="10.0" yMin="0.0" width="290" display="Pedestrians public transport usage">
       <setup></setup>
       <update></update>
@@ -206,24 +160,110 @@ set-histogram-num-bars 100</update>
         <update>plot count pedestrians with [waiting? = true]</update>
       </pen>
     </plot>
-    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="525" xMin="-200.0" height="120" legend="false" xMax="300.0" yMin="0.0" width="290" display="Delays histogram">
-      <setup></setup>
-      <update></update>
-      <pen interval="1.0" mode="1" display="default" color="-16777216" legend="true">
-        <setup></setup>
-        <update>histogram all-delays
-set-histogram-num-bars 100</update>
-      </pen>
-    </plot>
-    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Vehicle" y="645" xMin="0.0" height="120" legend="false" xMax="10.0" yMin="0.0" width="290" xAxis="Time step" display="Number of activity modification requests">
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Trip time" y="140" xMin="0.0" height="120" legend="false" xMax="10.0" yMin="0.0" width="290" xAxis="Time step" display="Average time per trip">
       <setup></setup>
       <update></update>
       <pen interval="1.0" mode="0" display="default" color="-16777216" legend="true">
         <setup></setup>
-        <update>plot length modify-record</update>
+        <update>ifelse all-periods != (list) [plot mean all-periods] [plot 0]</update>
       </pen>
     </plot>
-    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="765" xMin="0.0" height="120" legend="false" xMax="5.0" yMin="0.0" width="290" display="Number of planned trips histogram">
+    <slider x="960" step="0.1" y="24" max="0.5" display="tick-time-scale" height="33" min="0" direction="Horizontal" default="0.2" variable="tick-time-scale" units="Second(s)" width="290" sizeVersion="0"></slider>
+    <monitor x="960" precision="17" y="74" height="61" fontSize="11" width="100" display="Hours">floor ((ticks * tick-time-scale) / (60 * 60))</monitor>
+    <monitor x="1150" precision="17" y="74" height="61" fontSize="11" width="100" display="Seconds">(floor ((ticks * tick-time-scale))) - ((floor ((ticks * tick-time-scale) / 60) - (floor ((ticks * tick-time-scale) / (60 * 60))) * 60) * 60)</monitor>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Vehicle" y="260" xMin="0.0" height="120" legend="false" xMax="1000.0" yMin="0.0" width="290" xAxis="Time step" display="Trip time histogram">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="1" display="default" color="-16777216" legend="true">
+        <setup></setup>
+        <update>histogram all-periods
+set-histogram-num-bars 100</update>
+      </pen>
+    </plot>
+    <monitor x="1055" precision="17" y="74" height="61" fontSize="11" width="100" display="Minutes">floor ((ticks * tick-time-scale) / 60) - (floor ((ticks * tick-time-scale) / (60 * 60))) * 60</monitor>
+    <note x="960" y="58" backgroundDark="0" fontSize="8" width="285" markdown="true" height="20" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Elapsed time in the simulation (hh mm ss)</note>
+    <switch x="570" y="640" height="40" on="true" variable="control-seed?" width="170" display="control-seed?"></switch>
+    <slider x="570" step="1" y="685" max="1000" display="current-seed" height="33" min="0" direction="Horizontal" default="10.0" variable="current-seed" width="170" sizeVersion="0"></slider>
+    <button x="570" y="595" height="40" disableUntilTicks="true" forever="true" kind="Observer" width="170" display="go-infinite">go-infinite</button>
+    <note x="750" y="595" backgroundDark="0" fontSize="8" width="170" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Control the seed value (Note that go-infinite increments the current-seed value every tick)</note>
+    <button x="380" y="640" height="40" disableUntilTicks="true" forever="false" kind="Observer" width="170" display="go once">go</button>
+    <button x="380" y="685" height="40" disableUntilTicks="true" forever="true" kind="Observer" width="170" display="go">go</button>
+    <button x="380" y="595" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="170">setup</button>
+    <input x="380" multiline="false" y="740" height="60" variable="reference-road-id-1" type="number" width="130">159.0</input>
+    <input x="515" multiline="false" y="740" height="60" variable="reference-road-id-2" type="number" width="130">170.0</input>
+    <input x="380" multiline="false" y="805" height="60" variable="reference-road-miles" type="number" width="265">0.028465014</input>
+    <slider x="200" step="20" y="80" max="500" display="number-of-pedestrians" height="33" min="0" direction="Horizontal" default="300.0" variable="number-of-pedestrians" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="1" y="115" max="4" display="max-n-activities" height="33" min="1" direction="Horizontal" default="4.0" variable="max-n-activities" width="345" sizeVersion="0"></slider>
+    <slider x="200" step="5" y="220" max="60" display="min-home-duration-pedestrians" height="33" min="0" direction="Horizontal" default="15.0" variable="min-home-duration-pedestrians" units="min" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="5" y="255" max="60" display="max-home-duration-pedestrians" height="33" min="0" direction="Horizontal" default="45.0" variable="max-home-duration-pedestrians" units="min" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="220" max="60" display="min-home-duration-cars" height="33" min="0" direction="Horizontal" default="30.0" variable="min-home-duration-cars" units="min" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="255" max="60" display="max-home-duration-cars" height="33" min="0" direction="Horizontal" default="60.0" variable="max-home-duration-cars" units="min" width="170" sizeVersion="0"></slider>
+    <note x="25" y="195" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum time spent after initialisation at home before the first trip
+(left for cars and right for pedestrians)</note>
+    <note x="25" y="145" backgroundDark="0" fontSize="8" width="345" markdown="true" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum time an agent spends at an activity (i.e., at a building)</note>
+    <slider x="25" step="5" y="160" max="480" display="max-activity-duration" height="33" min="0" direction="Horizontal" default="30.0" variable="max-activity-duration" units="min" width="345" sizeVersion="0"></slider>
+    <switch x="25" y="290" height="40" on="true" variable="return-home?" width="345" display="return-home?"></switch>
+    <slider x="25" step="20" y="80" max="500" display="number-of-cars" height="33" min="0" direction="Horizontal" default="200.0" variable="number-of-cars" width="170" sizeVersion="0"></slider>
+    <chooser x="25" y="15" height="60" variable="synthetic-population" current="1" width="345" display="synthetic-population">
+      <choice type="string" value="Input data"></choice>
+      <choice type="string" value="Input model parameters"></choice>
+    </chooser>
+    <slider x="25" step="1" y="360" max="100" display="pedestrians-public-transport" height="33" min="0" direction="Horizontal" default="90.0" variable="pedestrians-public-transport" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="535" max="30" display="max-buffer-period" height="33" min="0" direction="Horizontal" default="10.0" variable="max-buffer-period" units="minutes" width="345" sizeVersion="0"></slider>
+    <note x="25" y="570" backgroundDark="0" fontSize="8" width="345" markdown="false" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Pedestrians public transport parameters</note>
+    <slider x="25" step="0.02" y="620" max="0.5" display="search-radius-increase-increment" height="33" min="0" direction="Horizontal" default="0.02" variable="search-radius-increase-increment" units="miles" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="0.05" y="960" max="1" display="mean-tolerance" height="33" min="0" direction="Horizontal" default="0.1" variable="mean-tolerance" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="1" y="925" max="20" display="min-delay-threshold" height="33" min="0" direction="Horizontal" default="20.0" variable="min-delay-threshold" width="345" sizeVersion="0"></slider>
+    <note x="25" y="910" backgroundDark="0" fontSize="8" width="345" markdown="true" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Minimum delay threshold at which an activity modification is requested is only reached if `w = 1`</note>
+    <slider x="25" step="5" y="875" max="100" display="period-threshold-std" height="33" min="0" direction="Horizontal" default="5.0" variable="period-threshold-std" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="840" max="200" display="period-threshold-4" height="33" min="100" direction="Horizontal" default="200.0" variable="period-threshold-4" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="805" max="200" display="period-threshold-3" height="33" min="100" direction="Horizontal" default="150.0" variable="period-threshold-3" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="770" max="200" display="period-threshold-2" height="33" min="0100" direction="Horizontal" default="110.0" variable="period-threshold-2" units="%" width="345" sizeVersion="0"></slider>
+    <slider x="25" step="5" y="735" max="200" display="period-threshold-1" height="33" min="100" direction="Horizontal" default="105.0" variable="period-threshold-1" units="%" width="345" sizeVersion="0"></slider>
+    <note x="25" y="655" backgroundDark="0" fontSize="8" width="345" markdown="true" height="30" textColorDark="-1" textColorLight="-16777216" backgroundLight="0"><![CDATA[period-threshold-<n> are percentages multiplied by the expected travel period to find the travel period threshold in ticks at which an activity modification is requested.]]></note>
+    <chooser x="25" y="685" height="45" variable="threshold-input-type" current="1" display="threshold-input-type" width="345" sizeVersion="0">
+      <choice type="string" value="Empirical"></choice>
+      <choice type="string" value="Controlled"></choice>
+    </chooser>
+    <slider x="25" step="0.02" y="585" max="0.5" display="public-transport-search-radius" height="33" min="0" direction="Horizontal" default="0.1" variable="public-transport-search-radius" units="miles" width="345" sizeVersion="0"></slider>
+    <note x="25" y="510" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Maximum number of ticks that the vehicle moves earlier than it should to reach its next building destination</note>
+    <slider x="25" step="10" y="405" max="100" display="slowest-car" height="33" min="10" direction="Horizontal" default="40.0" variable="slowest-car" units="mph" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="0.5" y="440" max="4" display="fastest-pedestrian" height="33" min="1" direction="Horizontal" default="4.0" variable="fastest-pedestrian" units="mph" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="0.5" y="440" max="4" display="slowest-pedestrian" height="33" min="1" direction="Horizontal" default="2.5" variable="slowest-pedestrian" units="mph" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="10" y="475" max="100" display="fastest-bus" height="33" min="10" direction="Horizontal" default="40.0" variable="fastest-bus" units="mile/hour" width="170" sizeVersion="0"></slider>
+    <slider x="25" step="10" y="475" max="100" display="slowest-bus" height="33" min="10" direction="Horizontal" default="20.0" variable="slowest-bus" units="mile/hour" width="170" sizeVersion="0"></slider>
+    <slider x="200" step="10" y="405" max="100" display="fastest-car" height="33" min="10" direction="Horizontal" default="100.0" variable="fastest-car" units="mph" width="170" sizeVersion="0"></slider>
+    <note x="25" y="395" backgroundDark="0" fontSize="8" width="150" markdown="false" height="18" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Cars' and pedestrians' speed</note>
+    <note x="25" y="330" backgroundDark="0" fontSize="8" width="345" markdown="true" height="36" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">End of parameters overriden by input synthetic population csv data
+
+---
+Public transport parameters</note>
+    <slider x="475" step="0.05" y="890" max="1" display="utility-threshold-1" height="33" min="0" direction="Horizontal" default="0.95" variable="utility-threshold-1" width="345" sizeVersion="0"></slider>
+    <slider x="475" step="0.05" y="925" max="1" display="utility-threshold-2" height="33" min="0" direction="Horizontal" default="0.9" variable="utility-threshold-2" width="345" sizeVersion="0"></slider>
+    <slider x="475" step="0.05" y="960" max="1" display="utility-threshold-3" height="33" min="0" direction="Horizontal" default="0.5" variable="utility-threshold-3" width="345" sizeVersion="0"></slider>
+    <slider x="475" step="0.05" y="995" max="1" display="utility-threshold-4" height="33" min="0" direction="Horizontal" default="0.0" variable="utility-threshold-4" width="345" sizeVersion="0"></slider>
+    <slider x="475" step="0.05" y="1030" max="1" display="utility-threshold-std" height="33" min="0" direction="Horizontal" default="0.05" variable="utility-threshold-std" width="345" sizeVersion="0"></slider>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Vehicle" y="645" xMin="0.0" height="245" legend="true" xMax="10.0" yMin="0.0" width="290" xAxis="Time step" display="Number of activity modification requests">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="0" display="All agents" color="-16777216" legend="true">
+        <setup></setup>
+        <update>plot length modify-record</update>
+      </pen>
+      <pen interval="1.0" mode="0" display="Cars" color="-14454117" legend="true">
+        <setup></setup>
+        <update>plot length modify-car-record</update>
+      </pen>
+      <pen interval="1.0" mode="0" display="Pedestrians (walk)" color="-5298144" legend="true">
+        <setup></setup>
+        <update>plot length modify-pedestrian-walk-record</update>
+      </pen>
+      <pen interval="1.0" mode="0" display="Pedestrians (bus)" color="-955883" legend="true">
+        <setup></setup>
+        <update>plot length modify-pedestrian-public-transport-record</update>
+      </pen>
+    </plot>
+    <plot x="960" autoPlotX="true" yMax="10.0" autoPlotY="true" y="890" xMin="0.0" height="120" legend="false" xMax="5.0" yMin="0.0" width="290" display="Number of planned trips histogram">
       <setup></setup>
       <update></update>
       <pen interval="1.0" mode="1" display="default" color="-16777216" legend="true">
@@ -232,14 +272,8 @@ set-histogram-num-bars 100</update>
 </update>
       </pen>
     </plot>
-    <note x="25" y="440" backgroundDark="0" fontSize="8" width="345" markdown="true" height="26" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">Public transport parameters</note>
-    <input x="380" multiline="false" y="755" height="60" variable="reference-road-id-1" type="number" width="130">159.0</input>
-    <input x="515" multiline="false" y="755" height="60" variable="reference-road-id-2" type="number" width="130">170.0</input>
-    <input x="380" multiline="false" y="820" height="60" variable="reference-road-miles" type="number" width="265">0.028465014</input>
   </widgets>
-  <info># MATraM: Multiple-Activity Transport and Mobility agent-based model
-
-Overview
+  <info><![CDATA[Overview
 --------
 
 This is a NetLogo model that simulates the movement of vehicles on a road network. The model includes three types of agents: nodes, buildings, and vehicles. Nodes represent intersections in the road network, buildings represent buildings in the environment, and vehicles move along the links between nodes. The model includes features such as speed limits, random maximum speeds for vehicles, and collision avoidance.
@@ -248,10 +282,10 @@ Design Concepts
 --------------
 
 * **Spatial Extent:** The model is defined on a two-dimensional grid, with nodes, links, and buildings representing intersections, roads, and buildings, respectively.
-* **Temporal Extent:** The model operates in discrete time steps, or ticks. At each tick, cars and buses move along the links between nodes and update their speed based on local conditions. Pedestrians move without considering speed limits.
-* **Stochasticity:** The model includes randomness in the form of random maximum speeds for cars and buses and the selection of destinations.
-* **Collectives:** The model simulates the collective behavior of cars, buses and pedestrians moving on a road network.
-* **Observation:** The model includes a visualization of the road network, buildings, and the movement of cars, vehicles and pedestrians.
+* **Temporal Extent:** The model operates in discrete time steps, or ticks. At each tick, vehicles move along the links between nodes and update their speed based on local conditions.
+* **Stochasticity:** The model includes randomness in the form of random maximum speeds for vehicles and the selection of destinations.
+* **Collectives:** The model simulates the collective behavior of vehicles moving on a road network.
+* **Observation:** The model includes a visualization of the road network, buildings, and the movement of vehicles.
 
 Details
 -------
@@ -261,14 +295,237 @@ Details
 * **Nodes:** Nodes represent intersections in the road network. They have a position on the grid, a list of links connected to them, and a unique ID.
 * **Links:** Links represent roads between intersections. They have a distance to the destination, a speed limit, a color, a thickness, and a unique ID.
 * **Buildings:** Buildings represent physical structures in the environment. They have a position on the grid, a unique ID, and a type (e.g. residential, commercial, etc.).
-* **Cars:** Cars represent individual agents moving on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
-* **Buses:** Buses represent public transport agents moving on the road network. They have a position on the grid, a destination (stop point), a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, and a capacity for pedestrians.
-* **Pedestrians:** Pedestrians represent individual agents walking on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
+* **Vehicles:** Vehicles represent individual agents moving on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
 
 ### Process Overview and Scheduling
 
-The model operates in two main procedures: `setup` and `go`. `Setup` initializes the nodes, buildings, and cars, buses and pedestrians and `go` advances the simulation by one tick. For a detailed description of the initialisation, input and the run submodels, refer to Yahya Gamal, Ricardo Colasanti, Gary Polhill, Tatsuya Mitomi, Esra Suel, Alison Heppenstall. MATraM: A multi-activity transport and mobility agent-based model for activity modifications. 2026.
-</info>
+The model operates in two main procedures: `setup` and `go`. `Setup` initializes the nodes, buildings, and vehicles, and `go` advances the simulation by one tick.
+
+### Initialization
+
+At the beginning of the simulation, the setup procedure initializes the nodes, buildings, and vehicles. The load-network procedure generates a network of nodes and links using the network extension and the links CSV file. It then sets the links. The load-buildings procedure creates a specified number of buildings and assigns them random starting points and destinations. It also calculates the shortest path between the starting point and destination and sets the initial speed and remaining journey distance. A journey is between a home (blue) and a building (red).
+   
+When the vehicles start their journey, they can only move to the nearest road node if it is unoccupied by other vehicles. This ensures that the vehicles do not collide with each other as they begin their travels, promoting a more realistic simulation of traffic flow.
+
+### Input
+
+The user can specify the number of vehicles in the model by setting the number_of_vehicles sliders in the interface. Additionally, you can set the speed of the slowest vehicle and the overall run speed, which is the maximum speed of any vehicle. This helps to speed up the simulation for experimental purposes only.
+
+### Submodels
+
+The `go` procedure advances the simulation by one tick. It first checks whether any vehicles have reached their destinations and stops them if they have. It then moves the remaining vehicles along the links between nodes and updates their speed based on local conditions.
+
+The `check-ahead` procedure checks whether there are any vehicles ahead of the calling vehicle and adjusts its speed accordingly. The `move-at-correct-speed` procedure checks whether the speed of the vehicle is greater than the speed limit for the road and adjusts it if necessary.
+
+### Output
+
+The model includes a visualization of the road network, buildings, and the movement of vehicles. The user can observe the behavior of the vehicles and the impact of different parameters on their movement.
+
+Versions history
+----------------
+
+### 2.0.5 (18/05/2026)
+1. Added the option to input the synthetic population as a csv file. Added the following chooser to the UI:
+    - `synthetic-population`: "Input data" uses the csv, and "Input model parameters" uses the UI parameters to generate a synthetic population
+2. Added the option to input the reference road link and its length in miles to calculate the `model-to-mile-factor` and `mile-to-model-factor`. Added the following input parameters in the UI:
+    - `reference-road-id-1`
+    - `reference-road-id-2`
+    - `reference-road-miles`
+3. Added a representation of utility and ustility thresholds, and substituted the process of flagging an activity modification to be based on utilities rather than cancellation periods percents. The utility is calculated as a ratio between the `delay` and the `target-period` to represent a similar measure to the cancellation period percent (subject to future modifications). The following additions have been made in the `pedestrians.nls` and `cars.nls` files:
+    - Parameters (cars and pedestrians): `utility`, `utility-thresholds`, `utility-weights`, `utility-raw-attributes`, `utility-per-attribute`
+    - Functions: `calculate-utility`, `flag-modification-request` (for flexible contained adjustments to the utility functions and the type of modification request)
+4. Bugs:
+    - Addressed an issue where the initialisation of the bus `template` object was referring to buses with `service = 19` instead of reading the data from the input csv.
+    - Addressed an issue where pedestrians execute the `check-ahead` function when moving across the road network
+    - Addressed an issue where pedestrians and cars did not update the `times`, `periods` and `delays` when moving between 2 activities whose `b-destinations` happened to be very close (yielding an empty `trip`)
+    - Addressed an issue in `nodes.nls` where the calculation of the `miles-to-model-factor` was referencing a hardcoded road link, rather than using the global function `calculate-miles-to-model-factor`
+    - Addressed an issue where cars did not update their `location-time` when they start their trip from one `b-destination` to another. This led to cases where the `current_period` of the first road link in the car's trip will be overestimated by the period the car spent at its `b-destination`.
+    - Addressed an issue where buses updated their `location-time` when they arrived to their destination, rather then when they started moving from their location. This led to cases where the `current_period` was over estmated by the waiting time of the bus at its location stop point. It also led to setting `location-time = 0` (i.e., ignoring it) when moving from the first link of the first stop point, which significanly overestimated the `current_period`.
+
+### 2.0.4 (18/02/2026)
+1. Bugs
+    - Addressed an issue leading pedestrians to proceed with an empty `trip` if their next building destination `b-destination` is their home and is very close to their current location. Detailed modification is as follows:
+        - Added `stop` after setting the pedestrian's `active? = false` to assure that pedestrian does not attempt to do its empty `trip` in the current tick. The `active? = false` label assures the pedestrian is not called in later ticks.
+
+### 2.0.3 (16/02/2026)
+1. Bugs
+    - Addressed an issue leading pedestrians to proceed with an empty `trip` if their next building destination `b-destination` is very close to their current location. Detailed modification is as follows:
+        - The while condition in line 237 in pedestrians.nls was modified from `i-legs + 1 = length legs` to `i-legs + 1 >= length legs`. This includes pedestrians with a `trip` but no `trip-legs`, which is applied by default once a pedestrian reaches a `b-destination` while still having a next element in its `b-destinations`
+
+### 2.0.2 (30/01/2025)
+1. Added the ability of pedestrians to have multimodal trips
+    - Added the following state variables to `pedestrians`
+        - `trip-legs`
+        - `trip-legs-modes`
+        - `trip-legs-expected-periods`
+        - `i-leg`
+        - `on-bus?`
+        - `waiting?`
+        - `current-bus`
+    - Added the following state-variables to buses for pedestrians to access them when selecting their bus:
+        - `remaining-sp-destinations`
+        - `max-capacity`
+        - `capacity`
+    - Added the following parameters in the interface:
+        - `pedestrians-public-transport`
+        - `public-transport-search-radius`
+        - `search-radius-increase-increment`
+    - `Pedestrians` now create trip legs to signify changes in the mode of transport in each leg. Currently, the number of trip legs can be either 1 (walk only) or 3 (walk, bus, walk)
+    - To find the optimum bus trip pedestrians do the following:
+        - Identify a set of origin bus stops and destination bus stops within a search region based on `pedestrians-public-transport`
+        - Find pairs of bus stops with relevant bus connections (assure the seleted buses are in the right direction between the bus stop pairs)
+        - If no pairs are found, extend the search region by the `search-radius-increase-increment` and repeat the above steps
+        - For each pair, identify the expected time taken to walk to the origin bus stop, arrive at the destination bus stop and walk to the final destination
+        - Select the bus stop pair that yields the lowest expected travel time
+    - `Pedestrians` compare the optimum bus trip to a normal walk trip to the final destination, and they select the one yielding the lowest expected trip time
+    - For each activity (`b-destination`), `pedestrians` compare a walk
+2. Added a restriction on cars and pedestrians to stay at least a number of minutes at home. 
+    - This assures the bus system is initialised with buses making progress in their respective routes before the pedestrians start to move in the system. 
+    - To achieve this, the following variables were added in the interface:
+        - `min-home-duration-cars`
+        - `min-home-duration-pedestrians`
+3. Bugs
+    - Addressed an issue where the `target-times` of `buses` registered a value of 0 for the second stop point. This advanced the subsequent items in the `target-times` list which led the bus to arrive earlier than intended to all the stations.
+
+
+### 2.0.1 (12/2025)
+1. Added buses
+    - `buses.nls` file created
+        - `buses` class is added
+        - `template` class is added to create buses where needed
+    - Added the following parameters to `nodes` to accomodate the inclusion of busses
+        - `sp-id`: stop point ID of node (-1 if not a stop point)
+        - `buses-id`: the service number of the buses passing through the node (empty list if not a stop point)
+        - `buses-freq`: the frequency of the serive (empty list if not a stop point)
+        - `buses-start`: whether the buses start from the startpoint or not
+        - `buses-period`: the period in ticks until the next bus arrives (empty list if not a stop point). This gets deduced by 1 each tick, and when it reaches zero at a node where the bus starts, a `bus` is created from its respective `template`
+
+Note: Pedestrians do not use buses in this version due to issues with routing in multi-modal trips (walking and buses)
+
+### 2.0.0 (10/10/2025)
+1. Upgraded the NetLogo file to NetLogo version 7
+2. Vehicles
+    - Renamed the vehicles class to `cars car` for separation from busses
+    - Added a `max-home-duration-cars` parameter to control the maximum period a car remains at home after initialisation before starting its first trip
+3. Added pedestrians
+    - Added `pedestrians.nls` including the behaviours of pedestrians walking to their target acitivities
+    - Functions in the `pedestrians.nls` files are similar to that in `vehicles.nls` with the following notable differences:
+        - Pedestrians do not consider the pedestrians ahead of them as they move across the network
+        - Pedestrians do not re-evaluate their `expected-periods` as they do not experience traffic congestions
+        - Pedestrians have a `public-transport?` variable indicating whether they will consider using public transport (buses) when they plan their trips or not
+    - Addded the following input parameters in the interface:
+        - `number-of-pedestrians`: number of initialised owners without a car
+        - `slowest-pedestrian`: the slowest pedestrian speed (0.25 mph)
+        - `fastest-pedestrian`: the fastest pedestrian speed (0.25 mph)
+        - `max-duration-home-pedestrian`: the longest time a pedestrian spends at home after initialisation before making its first trip
+4. Map scale and time representation
+    - Addressed an issue where the map was not scaled properly to miles
+        - In the `nodes.nls`, added a `model-to-mile-factor` and a `mile-to-model-factor` to scale the distances of the links and store them in the `distance_to_destination` road link variable
+        - The factors are calculated by measuring the real distance of `road 159 170` ("Meadow Pl" in Tillydrone, Aberdeen has a length of approximately 45.8 meters) and calculating a factor to transform the node 159 to node 170 distance in the model to miles
+    - Added a `tick-time-scale` input variable in the interface to control the represented time each simulated tick
+    - Added a set of monitors to show the elapsed time (hh mm ss) in the model
+    - Transformed all the `cars`, `pedestrians` and interface parameters to be measured in miles and seconds or minutes
+
+### 1.0.5 (29/07/2025)
+1. Vehicles keep track of which activity they request a modification for
+    - Transformed `modify?` to a list where each element reflects the respective activity in the `activity` list
+2. Vehicles indicate how the activity should be modified
+    - Added `modify-type` parameter as a list where each element can either be "cancel" or "reschedule"
+3. Vehicles use periods instead of delays to request activity modifications
+    - Added `cancel-periods` parameter to vehicles
+    - Added `cancel-periods-%` parameter to vehicles where the `cancel-periods` are percentages of the `expected-periods`
+    - Added `period-threshold-<n>` parameters indicating the mean `cancel-periods-%` per activity
+    - Added `period-threshold-std` parameter to be applied on all the activities
+4. Vehicles caculate the weights as a function of the travel periods and threshold (instead of weights as an input)
+    - Removed weights means and standard deviation inputs from the interface
+    - Weights represent the relative numeric distance between the highest period threshold and the threshold of the activity under analysis
+5. Added a minutes to ticks calculator to the interface
+    - Added `minutes` global parameter
+    - Added an output monitor for the respective number of ticks (60 minutes = 100 ticks)
+
+### 1.0.4 (16/06/2025)
+
+1. Vehicles allocate the time they took to finish a road network to that road network
+    - Added `current_period` parameter to the roads
+2. Vehicles identify the expected period to reach the next b-destination as the sum of all the `current-period` values across the road links to be used
+    - Added `expected-periods` parameter to the vehicles
+3. Vehicles consider a target time step to reach the next b-destination
+    - Added `target-times` parameter to the vehicles
+4. Vehicles move early to reach their next b-destination (in case of unexpected congestions)
+    - Added `buffer-period` parameter to the vehicles
+    - Added `max-buffer-period` to the UI to control the `buffer-period` paramter
+4. Vehicles monitor their achieved times, periods and delays
+    - Added the following parameters to the vehicles
+        - `times`
+        - `periods`
+        - `delays`
+5. Modified the threshold function for generating activities to consider the delay per activity
+    - Added the function `delay-threshold` to vehicles.nls
+6. Rehauled the structure of the fucntions used to initialise and run the vehicles in vehicles.nls
+    - `vehicles-init` has been updated to fully initialise all the parameters of the vehicle
+    - `start-journey` is no longer used in the model run, and its role has been moved to the `vehicles-move` function
+    - `vehicles-move` has been updated to
+        - Move the vehicles from their homes after their initialisation when they meet the required conditions (a function of `ticks`, `buffer-period` and `target-times`) -- previously applied in `start-journey`
+        - Move the vehicles across their respective trips while allocating the periods they take to the `current_period` of each respective road network
+
+### 1.0.3 (29/05/2025)
+
+1. Addressed a bug leading to the destination not being set at the beginning of the trips if the vehicle's first 2 (or more) destinations in `b-destinations` happen to have the same closest node as that of the vehicles home. 
+    - Vehicles now keep on checking their `b-destinations` in order until they find one whose closest node is not the same as the closest node to their home.
+    - If all the destinations in `b-destinations` are not sufficient (meaning, all the destinations are very close to home), the vehicle does not move and stays home.
+2. Added the capability to control the seed of the run
+    - Added the following parameters in the interface
+        - `control-seed?`
+        - `current-seed`
+    - `go-infinite` now increments the `current-seed` by 1 after the completion of each run (if `control-seed?` is on)
+3. Renamed the `intolerance` parameter to `tolerance` to reflect its mathematical impact on the time thresholds at which vehicles request a change in activities.
+4. Added the capability to control the weights of the activities and tolerance per vehicle (maximum number of activities is capped at 4).
+    - The weights and tolerance are drawn for normal distributions.
+    - Added the following parameters in the interface
+        - `w1`
+        - `w2`
+        - `w3`
+        - `w4`
+        - `w-std`
+        - `mean-tolerance`
+5. Added monitoring parameters for the activities and their respective times and weights at which a vehicle request a change in activity
+    - Added the following global parameters in the vehicles.nls file
+        - `activity-record`
+        - `time-record`
+        - `threshold-record`
+        - `weight-record`
+
+### 1.0.1
+
+1. Added more than one destination
+    - Added the following parameters to vehicles:
+        - `b-destinations`
+        - `i-destination`
+        - `activity`
+    - Added the following parameter in the interface
+        - `max-n-activities`
+2. Added a measure of the time taken to each b-destination
+    - Added `time` paramter to vehicles
+    - Added a monitor for the time taken per trip
+3. Added a `go-infinite` button which reapplies `setup` once all the vehicles have reached all their destinations
+
+### 1.0.2
+
+1. Vehicles move back home before the end of the run
+    - Added the following parameter in the interface
+        - `return-home?`
+2. Vehicles request modifications to their activities
+    - Added the following parameters to vehicles:
+        - `intolerance`
+        - `activity-weight`
+    - Added the following function to calculate the time threshold for modification
+        - `time-threshold`
+    - Added a monitor for the number of vehicles requesting an activity modification
+
+### 1.0.0
+
+Cloned from the GitHub repository on 05 March 2025
+]]></info>
   <turtleShapes>
     <shape name="default" rotatable="true" editableColorIndex="0">
       <polygon color="-1920102913" filled="true" marked="true">
@@ -1331,6 +1588,126 @@ setup</previewCommands>
         <enumeratedValueSet variable="tick-time-scale">
           <value value="0.2"></value>
         </enumeratedValueSet>
+      </constants>
+    </experiment>
+    <experiment name="experiment" repetitions="1" sequentialRunOrder="true" runMetricsEveryStep="true">
+      <setup>setup</setup>
+      <go>go</go>
+      <metrics>
+        <metric>count turtles</metric>
+      </metrics>
+      <constants>
+        <enumeratedValueSet variable="reference-road-miles">
+          <value value="0.028465014"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-bus">
+          <value value="20"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="public-transport-search-radius">
+          <value value="0.1"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="current-seed">
+          <value value="1386113686"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="utility-threshold-std">
+          <value value="0.05"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-buffer-period">
+          <value value="10"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="number-of-pedestrians">
+          <value value="300"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-std">
+          <value value="5"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-n-activities">
+          <value value="4"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="min-delay-threshold">
+          <value value="20"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="search-radius-increase-increment">
+          <value value="0.02"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="fastest-bus">
+          <value value="40"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-1">
+          <value value="105"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-2">
+          <value value="110"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-3">
+          <value value="150"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="threshold-input-type">
+          <value value="&quot;Controlled&quot;"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="period-threshold-4">
+          <value value="200"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="pedestrians-public-transport">
+          <value value="90"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="number-of-cars">
+          <value value="200"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="utility-threshold-2">
+          <value value="0.9"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="reference-road-id-1">
+          <value value="159"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="utility-threshold-1">
+          <value value="0.95"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="reference-road-id-2">
+          <value value="170"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-pedestrian">
+          <value value="2.5"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="tick-time-scale">
+          <value value="0.2"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="synthetic-population">
+          <value value="&quot;Input model parameters&quot;"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="return-home?">
+          <value value="true"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-activity-duration">
+          <value value="30"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="min-home-duration-pedestrians">
+          <value value="15"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-home-duration-cars">
+          <value value="60"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="mean-tolerance">
+          <value value="0.1"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="fastest-car">
+          <value value="100"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="control-seed?">
+          <value value="false"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="slowest-car">
+          <value value="40"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="max-home-duration-pedestrians">
+          <value value="45"></value>
+        </enumeratedValueSet>
+        <enumeratedValueSet variable="min-home-duration-cars">
+          <value value="30"></value>
+        </enumeratedValueSet>
+        <steppedValueSet variable="utility-threshold-4" first="-2" step="0.05" last="2"></steppedValueSet>
+        <steppedValueSet variable="fastest-pedestrian" first="-10" step="1" last="10"></steppedValueSet>
+        <steppedValueSet variable="utility-threshold-3" first="-2" step="0.05" last="2"></steppedValueSet>
       </constants>
     </experiment>
   </experiments>

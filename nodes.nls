@@ -113,10 +113,11 @@ to load-network
   
   ;; scale the calculated distances to mile (regardless of the size of the space)
   set model-to-mile-factor 0
-  ask road 159 170 [
-    set model-to-mile-factor 0.028465014 / distance_to_destination
-    set mile-to-model-factor distance_to_destination / 0.028465014
-  ]
+  calculate-model-to-mile-factor
+;  ask road 159 170 [
+;    set model-to-mile-factor 0.028465014 / distance_to_destination
+;    set mile-to-model-factor distance_to_destination / 0.028465014
+;  ]
   
   ask roads [
     set distance_to_destination distance_to_destination * model-to-mile-factor
