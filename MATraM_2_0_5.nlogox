@@ -273,7 +273,9 @@ Public transport parameters</note>
       </pen>
     </plot>
   </widgets>
-  <info><![CDATA[Overview
+  <info># MATraM: Multiple-Activity Transport and Mobility agent-based model
+
+Overview
 --------
 
 This is a NetLogo model that simulates the movement of vehicles on a road network. The model includes three types of agents: nodes, buildings, and vehicles. Nodes represent intersections in the road network, buildings represent buildings in the environment, and vehicles move along the links between nodes. The model includes features such as speed limits, random maximum speeds for vehicles, and collision avoidance.
@@ -282,10 +284,10 @@ Design Concepts
 --------------
 
 * **Spatial Extent:** The model is defined on a two-dimensional grid, with nodes, links, and buildings representing intersections, roads, and buildings, respectively.
-* **Temporal Extent:** The model operates in discrete time steps, or ticks. At each tick, vehicles move along the links between nodes and update their speed based on local conditions.
-* **Stochasticity:** The model includes randomness in the form of random maximum speeds for vehicles and the selection of destinations.
-* **Collectives:** The model simulates the collective behavior of vehicles moving on a road network.
-* **Observation:** The model includes a visualization of the road network, buildings, and the movement of vehicles.
+* **Temporal Extent:** The model operates in discrete time steps, or ticks. At each tick, cars and buses move along the links between nodes and update their speed based on local conditions. Pedestrians move without considering speed limits.
+* **Stochasticity:** The model includes randomness in the form of random maximum speeds for cars and buses and the selection of destinations.
+* **Collectives:** The model simulates the collective behavior of cars, buses and pedestrians moving on a road network.
+* **Observation:** The model includes a visualization of the road network, buildings, and the movement of cars, vehicles and pedestrians.
 
 Details
 -------
@@ -295,237 +297,14 @@ Details
 * **Nodes:** Nodes represent intersections in the road network. They have a position on the grid, a list of links connected to them, and a unique ID.
 * **Links:** Links represent roads between intersections. They have a distance to the destination, a speed limit, a color, a thickness, and a unique ID.
 * **Buildings:** Buildings represent physical structures in the environment. They have a position on the grid, a unique ID, and a type (e.g. residential, commercial, etc.).
-* **Vehicles:** Vehicles represent individual agents moving on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
+* **Cars:** Cars represent individual agents moving on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
+* **Buses:** Buses represent public transport agents moving on the road network. They have a position on the grid, a destination (stop point), a maximum speed, a current speed, a local speed restriction, a journey distance to their destination, a remaining journey distance, and a capacity for pedestrians.
+* **Pedestrians:** Pedestrians represent individual agents walking on the road network. They have a position on the grid, a destination, a maximum speed, a current speed, a journey distance to their destination, a remaining journey distance, a path to the ultimate destination, and a flag indicating whether they are moving.
 
 ### Process Overview and Scheduling
 
-The model operates in two main procedures: `setup` and `go`. `Setup` initializes the nodes, buildings, and vehicles, and `go` advances the simulation by one tick.
-
-### Initialization
-
-At the beginning of the simulation, the setup procedure initializes the nodes, buildings, and vehicles. The load-network procedure generates a network of nodes and links using the network extension and the links CSV file. It then sets the links. The load-buildings procedure creates a specified number of buildings and assigns them random starting points and destinations. It also calculates the shortest path between the starting point and destination and sets the initial speed and remaining journey distance. A journey is between a home (blue) and a building (red).
-   
-When the vehicles start their journey, they can only move to the nearest road node if it is unoccupied by other vehicles. This ensures that the vehicles do not collide with each other as they begin their travels, promoting a more realistic simulation of traffic flow.
-
-### Input
-
-The user can specify the number of vehicles in the model by setting the number_of_vehicles sliders in the interface. Additionally, you can set the speed of the slowest vehicle and the overall run speed, which is the maximum speed of any vehicle. This helps to speed up the simulation for experimental purposes only.
-
-### Submodels
-
-The `go` procedure advances the simulation by one tick. It first checks whether any vehicles have reached their destinations and stops them if they have. It then moves the remaining vehicles along the links between nodes and updates their speed based on local conditions.
-
-The `check-ahead` procedure checks whether there are any vehicles ahead of the calling vehicle and adjusts its speed accordingly. The `move-at-correct-speed` procedure checks whether the speed of the vehicle is greater than the speed limit for the road and adjusts it if necessary.
-
-### Output
-
-The model includes a visualization of the road network, buildings, and the movement of vehicles. The user can observe the behavior of the vehicles and the impact of different parameters on their movement.
-
-Versions history
-----------------
-
-### 2.0.5 (18/05/2026)
-1. Added the option to input the synthetic population as a csv file. Added the following chooser to the UI:
-    - `synthetic-population`: "Input data" uses the csv, and "Input model parameters" uses the UI parameters to generate a synthetic population
-2. Added the option to input the reference road link and its length in miles to calculate the `model-to-mile-factor` and `mile-to-model-factor`. Added the following input parameters in the UI:
-    - `reference-road-id-1`
-    - `reference-road-id-2`
-    - `reference-road-miles`
-3. Added a representation of utility and ustility thresholds, and substituted the process of flagging an activity modification to be based on utilities rather than cancellation periods percents. The utility is calculated as a ratio between the `delay` and the `target-period` to represent a similar measure to the cancellation period percent (subject to future modifications). The following additions have been made in the `pedestrians.nls` and `cars.nls` files:
-    - Parameters (cars and pedestrians): `utility`, `utility-thresholds`, `utility-weights`, `utility-raw-attributes`, `utility-per-attribute`
-    - Functions: `calculate-utility`, `flag-modification-request` (for flexible contained adjustments to the utility functions and the type of modification request)
-4. Bugs:
-    - Addressed an issue where the initialisation of the bus `template` object was referring to buses with `service = 19` instead of reading the data from the input csv.
-    - Addressed an issue where pedestrians execute the `check-ahead` function when moving across the road network
-    - Addressed an issue where pedestrians and cars did not update the `times`, `periods` and `delays` when moving between 2 activities whose `b-destinations` happened to be very close (yielding an empty `trip`)
-    - Addressed an issue in `nodes.nls` where the calculation of the `miles-to-model-factor` was referencing a hardcoded road link, rather than using the global function `calculate-miles-to-model-factor`
-    - Addressed an issue where cars did not update their `location-time` when they start their trip from one `b-destination` to another. This led to cases where the `current_period` of the first road link in the car's trip will be overestimated by the period the car spent at its `b-destination`.
-    - Addressed an issue where buses updated their `location-time` when they arrived to their destination, rather then when they started moving from their location. This led to cases where the `current_period` was over estmated by the waiting time of the bus at its location stop point. It also led to setting `location-time = 0` (i.e., ignoring it) when moving from the first link of the first stop point, which significanly overestimated the `current_period`.
-
-### 2.0.4 (18/02/2026)
-1. Bugs
-    - Addressed an issue leading pedestrians to proceed with an empty `trip` if their next building destination `b-destination` is their home and is very close to their current location. Detailed modification is as follows:
-        - Added `stop` after setting the pedestrian's `active? = false` to assure that pedestrian does not attempt to do its empty `trip` in the current tick. The `active? = false` label assures the pedestrian is not called in later ticks.
-
-### 2.0.3 (16/02/2026)
-1. Bugs
-    - Addressed an issue leading pedestrians to proceed with an empty `trip` if their next building destination `b-destination` is very close to their current location. Detailed modification is as follows:
-        - The while condition in line 237 in pedestrians.nls was modified from `i-legs + 1 = length legs` to `i-legs + 1 >= length legs`. This includes pedestrians with a `trip` but no `trip-legs`, which is applied by default once a pedestrian reaches a `b-destination` while still having a next element in its `b-destinations`
-
-### 2.0.2 (30/01/2025)
-1. Added the ability of pedestrians to have multimodal trips
-    - Added the following state variables to `pedestrians`
-        - `trip-legs`
-        - `trip-legs-modes`
-        - `trip-legs-expected-periods`
-        - `i-leg`
-        - `on-bus?`
-        - `waiting?`
-        - `current-bus`
-    - Added the following state-variables to buses for pedestrians to access them when selecting their bus:
-        - `remaining-sp-destinations`
-        - `max-capacity`
-        - `capacity`
-    - Added the following parameters in the interface:
-        - `pedestrians-public-transport`
-        - `public-transport-search-radius`
-        - `search-radius-increase-increment`
-    - `Pedestrians` now create trip legs to signify changes in the mode of transport in each leg. Currently, the number of trip legs can be either 1 (walk only) or 3 (walk, bus, walk)
-    - To find the optimum bus trip pedestrians do the following:
-        - Identify a set of origin bus stops and destination bus stops within a search region based on `pedestrians-public-transport`
-        - Find pairs of bus stops with relevant bus connections (assure the seleted buses are in the right direction between the bus stop pairs)
-        - If no pairs are found, extend the search region by the `search-radius-increase-increment` and repeat the above steps
-        - For each pair, identify the expected time taken to walk to the origin bus stop, arrive at the destination bus stop and walk to the final destination
-        - Select the bus stop pair that yields the lowest expected travel time
-    - `Pedestrians` compare the optimum bus trip to a normal walk trip to the final destination, and they select the one yielding the lowest expected trip time
-    - For each activity (`b-destination`), `pedestrians` compare a walk
-2. Added a restriction on cars and pedestrians to stay at least a number of minutes at home. 
-    - This assures the bus system is initialised with buses making progress in their respective routes before the pedestrians start to move in the system. 
-    - To achieve this, the following variables were added in the interface:
-        - `min-home-duration-cars`
-        - `min-home-duration-pedestrians`
-3. Bugs
-    - Addressed an issue where the `target-times` of `buses` registered a value of 0 for the second stop point. This advanced the subsequent items in the `target-times` list which led the bus to arrive earlier than intended to all the stations.
-
-
-### 2.0.1 (12/2025)
-1. Added buses
-    - `buses.nls` file created
-        - `buses` class is added
-        - `template` class is added to create buses where needed
-    - Added the following parameters to `nodes` to accomodate the inclusion of busses
-        - `sp-id`: stop point ID of node (-1 if not a stop point)
-        - `buses-id`: the service number of the buses passing through the node (empty list if not a stop point)
-        - `buses-freq`: the frequency of the serive (empty list if not a stop point)
-        - `buses-start`: whether the buses start from the startpoint or not
-        - `buses-period`: the period in ticks until the next bus arrives (empty list if not a stop point). This gets deduced by 1 each tick, and when it reaches zero at a node where the bus starts, a `bus` is created from its respective `template`
-
-Note: Pedestrians do not use buses in this version due to issues with routing in multi-modal trips (walking and buses)
-
-### 2.0.0 (10/10/2025)
-1. Upgraded the NetLogo file to NetLogo version 7
-2. Vehicles
-    - Renamed the vehicles class to `cars car` for separation from busses
-    - Added a `max-home-duration-cars` parameter to control the maximum period a car remains at home after initialisation before starting its first trip
-3. Added pedestrians
-    - Added `pedestrians.nls` including the behaviours of pedestrians walking to their target acitivities
-    - Functions in the `pedestrians.nls` files are similar to that in `vehicles.nls` with the following notable differences:
-        - Pedestrians do not consider the pedestrians ahead of them as they move across the network
-        - Pedestrians do not re-evaluate their `expected-periods` as they do not experience traffic congestions
-        - Pedestrians have a `public-transport?` variable indicating whether they will consider using public transport (buses) when they plan their trips or not
-    - Addded the following input parameters in the interface:
-        - `number-of-pedestrians`: number of initialised owners without a car
-        - `slowest-pedestrian`: the slowest pedestrian speed (0.25 mph)
-        - `fastest-pedestrian`: the fastest pedestrian speed (0.25 mph)
-        - `max-duration-home-pedestrian`: the longest time a pedestrian spends at home after initialisation before making its first trip
-4. Map scale and time representation
-    - Addressed an issue where the map was not scaled properly to miles
-        - In the `nodes.nls`, added a `model-to-mile-factor` and a `mile-to-model-factor` to scale the distances of the links and store them in the `distance_to_destination` road link variable
-        - The factors are calculated by measuring the real distance of `road 159 170` ("Meadow Pl" in Tillydrone, Aberdeen has a length of approximately 45.8 meters) and calculating a factor to transform the node 159 to node 170 distance in the model to miles
-    - Added a `tick-time-scale` input variable in the interface to control the represented time each simulated tick
-    - Added a set of monitors to show the elapsed time (hh mm ss) in the model
-    - Transformed all the `cars`, `pedestrians` and interface parameters to be measured in miles and seconds or minutes
-
-### 1.0.5 (29/07/2025)
-1. Vehicles keep track of which activity they request a modification for
-    - Transformed `modify?` to a list where each element reflects the respective activity in the `activity` list
-2. Vehicles indicate how the activity should be modified
-    - Added `modify-type` parameter as a list where each element can either be "cancel" or "reschedule"
-3. Vehicles use periods instead of delays to request activity modifications
-    - Added `cancel-periods` parameter to vehicles
-    - Added `cancel-periods-%` parameter to vehicles where the `cancel-periods` are percentages of the `expected-periods`
-    - Added `period-threshold-<n>` parameters indicating the mean `cancel-periods-%` per activity
-    - Added `period-threshold-std` parameter to be applied on all the activities
-4. Vehicles caculate the weights as a function of the travel periods and threshold (instead of weights as an input)
-    - Removed weights means and standard deviation inputs from the interface
-    - Weights represent the relative numeric distance between the highest period threshold and the threshold of the activity under analysis
-5. Added a minutes to ticks calculator to the interface
-    - Added `minutes` global parameter
-    - Added an output monitor for the respective number of ticks (60 minutes = 100 ticks)
-
-### 1.0.4 (16/06/2025)
-
-1. Vehicles allocate the time they took to finish a road network to that road network
-    - Added `current_period` parameter to the roads
-2. Vehicles identify the expected period to reach the next b-destination as the sum of all the `current-period` values across the road links to be used
-    - Added `expected-periods` parameter to the vehicles
-3. Vehicles consider a target time step to reach the next b-destination
-    - Added `target-times` parameter to the vehicles
-4. Vehicles move early to reach their next b-destination (in case of unexpected congestions)
-    - Added `buffer-period` parameter to the vehicles
-    - Added `max-buffer-period` to the UI to control the `buffer-period` paramter
-4. Vehicles monitor their achieved times, periods and delays
-    - Added the following parameters to the vehicles
-        - `times`
-        - `periods`
-        - `delays`
-5. Modified the threshold function for generating activities to consider the delay per activity
-    - Added the function `delay-threshold` to vehicles.nls
-6. Rehauled the structure of the fucntions used to initialise and run the vehicles in vehicles.nls
-    - `vehicles-init` has been updated to fully initialise all the parameters of the vehicle
-    - `start-journey` is no longer used in the model run, and its role has been moved to the `vehicles-move` function
-    - `vehicles-move` has been updated to
-        - Move the vehicles from their homes after their initialisation when they meet the required conditions (a function of `ticks`, `buffer-period` and `target-times`) -- previously applied in `start-journey`
-        - Move the vehicles across their respective trips while allocating the periods they take to the `current_period` of each respective road network
-
-### 1.0.3 (29/05/2025)
-
-1. Addressed a bug leading to the destination not being set at the beginning of the trips if the vehicle's first 2 (or more) destinations in `b-destinations` happen to have the same closest node as that of the vehicles home. 
-    - Vehicles now keep on checking their `b-destinations` in order until they find one whose closest node is not the same as the closest node to their home.
-    - If all the destinations in `b-destinations` are not sufficient (meaning, all the destinations are very close to home), the vehicle does not move and stays home.
-2. Added the capability to control the seed of the run
-    - Added the following parameters in the interface
-        - `control-seed?`
-        - `current-seed`
-    - `go-infinite` now increments the `current-seed` by 1 after the completion of each run (if `control-seed?` is on)
-3. Renamed the `intolerance` parameter to `tolerance` to reflect its mathematical impact on the time thresholds at which vehicles request a change in activities.
-4. Added the capability to control the weights of the activities and tolerance per vehicle (maximum number of activities is capped at 4).
-    - The weights and tolerance are drawn for normal distributions.
-    - Added the following parameters in the interface
-        - `w1`
-        - `w2`
-        - `w3`
-        - `w4`
-        - `w-std`
-        - `mean-tolerance`
-5. Added monitoring parameters for the activities and their respective times and weights at which a vehicle request a change in activity
-    - Added the following global parameters in the vehicles.nls file
-        - `activity-record`
-        - `time-record`
-        - `threshold-record`
-        - `weight-record`
-
-### 1.0.1
-
-1. Added more than one destination
-    - Added the following parameters to vehicles:
-        - `b-destinations`
-        - `i-destination`
-        - `activity`
-    - Added the following parameter in the interface
-        - `max-n-activities`
-2. Added a measure of the time taken to each b-destination
-    - Added `time` paramter to vehicles
-    - Added a monitor for the time taken per trip
-3. Added a `go-infinite` button which reapplies `setup` once all the vehicles have reached all their destinations
-
-### 1.0.2
-
-1. Vehicles move back home before the end of the run
-    - Added the following parameter in the interface
-        - `return-home?`
-2. Vehicles request modifications to their activities
-    - Added the following parameters to vehicles:
-        - `intolerance`
-        - `activity-weight`
-    - Added the following function to calculate the time threshold for modification
-        - `time-threshold`
-    - Added a monitor for the number of vehicles requesting an activity modification
-
-### 1.0.0
-
-Cloned from the GitHub repository on 05 March 2025
-]]></info>
+The model operates in two main procedures: `setup` and `go`. `Setup` initializes the nodes, buildings, and cars, buses and pedestrians and `go` advances the simulation by one tick. For a detailed description of the initialisation, input and the run submodels, refer to Yahya Gamal, Ricardo Colasanti, Gary Polhill, Tatsuya Mitomi, Esra Suel, Alison Heppenstall. MATraM: A multi-activity transport and mobility agent-based model for activity modifications. 2026.
+</info>
   <turtleShapes>
     <shape name="default" rotatable="true" editableColorIndex="0">
       <polygon color="-1920102913" filled="true" marked="true">
